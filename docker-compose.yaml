@@ -1,8 +1,50 @@
 services:
+  localstack:
+    image: localstack/localstack
+    hostname: localstack
+    environment:
+      - SERVICES=sqs
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - LS_LOG=warning
+    healthcheck:
+      test: ["CMD", "awslocal", "sqs", "list-queues", "--endpoint-url=http://localhost:4566"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - localstack_data:/var/lib/localstack
+
+  producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.producer
+    hostname: producer
+    environment:
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - SQS_QUEUE_NAME=hands-on-interview
+    depends_on:
+      localstack:
+        condition: service_healthy
+
   summary_stats:
     build:
       context: .
       dockerfile: Dockerfile
-    command:
-      - python
-      - main.py
+    hostname: consumer
+    command: ["python", "-u","main.py"] #
+    environment:
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+volumes:
+  localstack_data: {}
