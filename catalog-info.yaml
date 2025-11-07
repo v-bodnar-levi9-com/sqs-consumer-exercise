@@ -1,0 +1,13 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: nps-hands-on-interview
+  description: NPS tech interview exercises
+  annotations:
+    jira/project-key: NPS
+    snyk.io/org-id: b9e84c4f-1c9a-4e0b-bd0b-01e94d8518c7
+    snyk.io/targets: DPG-Media-Search-Reco/nps-hands-on-interview
+spec:
+  type: service
+  owner: IT-124625
+  lifecycle: experimental

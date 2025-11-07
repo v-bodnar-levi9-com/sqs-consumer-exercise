@@ -1,0 +1,8 @@
+services:
+  summary_stats:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      - python
+      - main.py
