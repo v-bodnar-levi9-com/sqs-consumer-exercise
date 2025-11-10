@@ -4,11 +4,16 @@ import json
 import os
 import random
 import string
+import logging
 from datetime import datetime, timedelta
 import time
 
 import localstack_client.session as boto3
 
+# Configure logging based on LOG_LEVEL environment variable
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logger = logging.getLogger(__name__)
 
 QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "hands-on-interview")
 FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -25,10 +30,10 @@ client = boto3.client("sqs")
 def get_queue_url(queue_name):
     try:
         res = client.get_queue_url(QueueName=queue_name)
-        print("Retrieved")
+        logger.info("Retrieved queue URL")
     except:
         res = client.create_queue(QueueName=queue_name)
-        print("Created")
+        logger.info("Created queue")
     return res["QueueUrl"]
 
 
@@ -102,18 +107,19 @@ def draw_scenario():
 
 
 if __name__ == "__main__":
+    logger.info("Starting event server (producer)...")
     queue_url = get_queue_url(QUEUE_NAME)
     amount_of_scenarios = int(os.getenv("ITERATIONS", 10))
     while True:
 
         messages_on_queue = get_num_messages(queue_url)
-        print(f"{messages_on_queue=}")
+        logger.debug(f"{messages_on_queue=}")
         if messages_on_queue == 0:
             for i in range(amount_of_scenarios):
                 messages = draw_scenario()
-                print(f"Preparing to send a scenario with {len(messages)}")
+                logger.debug(f"Preparing to send a scenario with {len(messages)}")
                 sent = sum([1 for msg in messages if send_message(msg, queue_url)])
-                print(f"Sent {sent} out of {len(messages)}")
-                print("-" * 35)
+                logger.debug(f"Sent {sent} out of {len(messages)}")
+                logger.debug("-" * 35)
 
         time.sleep(5)

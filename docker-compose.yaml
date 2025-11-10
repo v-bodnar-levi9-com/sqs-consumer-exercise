@@ -27,6 +27,7 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
       - SQS_QUEUE_NAME=hands-on-interview
+      - LOG_LEVEL=WARNING
     depends_on:
       localstack:
         condition: service_healthy
@@ -36,7 +37,7 @@ services:
       context: .
       dockerfile: Dockerfile
     hostname: consumer
-    command: ["poetry", "run", "nps-kata"]
+    command: ["python", "-m", "src.main"]
     environment:
       - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
