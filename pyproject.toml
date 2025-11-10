@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "nps-kata"
+version = "0.1.0"
+description = "NPS Kata prototype processing SQS events"
+authors = ["Unknown <example@example.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [ { include = "src" } ]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jmespath = "*"
+python-dateutil = "*"
+s3transfer = "*"
+six = "*"
+urllib3 = "*"
+localstack-client = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+
+[tool.poetry.scripts]
+nps-kata = "src.main:main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
