@@ -5,10 +5,44 @@ A prototype was developed to analyze the performance of a small e-commerce websi
 The website wants to analyze different type of events that are being emitted real-time.
 Given an **SQS** queue with messages representing real time events this application keeps reading those messages and prints information about the amount of particular event types and the sum of the property value.
 
-## Setup
+## Setup (with Poetry)
 
-1. Make sure the project requirements have been installed from `requirements.txt`
-2. Run the backend event server using `./.server/run.sh` (this requires an installation of docker on your machine)
+This project now uses [Poetry](https://python-poetry.org/) for dependency and environment management.
+
+1. Install Poetry (see official docs) or via `pipx install poetry`.
+2. Install dependencies:
+    ```bash
+    poetry install
+    ```
+3. Run the backend event server using `./.server/run.sh` (requires Docker).
+4. Start the app:
+    ```bash
+    poetry run nps-kata
+    ```
+
+Legacy `requirements.txt` is kept temporarily for existing Dockerfiles; they can be updated to use `poetry export -f requirements.txt -o requirements.txt --without-hashes` in a future step.
+
+## Container Usage
+
+Build runtime container:
+```bash
+docker build -t nps-kata:latest -f Dockerfile .
+```
+Run application container (example, overriding queue name if needed):
+```bash
+docker run --rm -e SQS_QUEUE_NAME=hands-on-interview nps-kata:latest
+```
+
+Build event producer container:
+```bash
+docker build -t nps-kata-producer:latest -f Dockerfile.producer .
+```
+Run producer:
+```bash
+docker run --rm nps-kata-producer:latest
+```
+
+Both images install dependencies via Poetry directly; no `requirements.txt` is used during the build anymore.
 
 ## Event Schema
 
