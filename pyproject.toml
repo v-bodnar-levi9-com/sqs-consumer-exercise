@@ -21,6 +21,9 @@ uvicorn = "^0.24.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
+pytest-asyncio = "^0.21.0"
+pytest-cov = "^4.0"
+httpx = "^0.25.0"
 
 [tool.poetry.scripts]
 nps-kata = "src.main:main"
@@ -28,3 +31,12 @@ nps-kata = "src.main:main"
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["test"]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests", 
+    "unit: marks tests as unit tests",
+]
