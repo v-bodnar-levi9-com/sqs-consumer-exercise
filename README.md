@@ -31,7 +31,7 @@ docker-compose -f docker-compose.yaml -f docker-compose.scale.yaml up
 ```
 
 ### Access the dashboard:
-Open http://localhost:8000 in your browser for real-time statistics
+Open http://localhost:8080 in your browser for real-time statistics
 
 ### API Endpoints:
 - `GET /` - Interactive dashboard
