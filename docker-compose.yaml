@@ -16,6 +16,18 @@ services:
     volumes:
       - localstack_data:/var/lib/localstack
 
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    command: redis-server --save 20 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
   producer:
     build:
       context: .
@@ -32,20 +44,44 @@ services:
       localstack:
         condition: service_healthy
 
-  summary_stats:
+  # Scalable message processor service
+  processor:
     build:
       context: .
-      dockerfile: Dockerfile
-    hostname: consumer
-    command: ["python", "-m", "src.main"]
+      dockerfile: Dockerfile.processor
     environment:
       - AWS_ENDPOINT_URL=http://localstack:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
+      - SQS_QUEUE_NAME=hands-on-interview
+      - REDIS_HOST=redis
+      - LOG_LEVEL=INFO
     depends_on:
       localstack:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 2  # Scale to 2 instances by default
+    restart: unless-stopped
+
+  # Stats API service
+  stats_api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    hostname: stats_api
+    ports:
+      - "8080:8000"
+    environment:
+      - REDIS_HOST=redis
+      - LOG_LEVEL=INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   localstack_data: {}
+  redis_data: {}

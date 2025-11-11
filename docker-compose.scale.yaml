@@ -1,0 +1,15 @@
+services:
+  processor:
+    deploy:
+      replicas: 5  # Scale to 5 processor instances
+    environment:
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - SQS_QUEUE_NAME=hands-on-interview
+      - REDIS_HOST=redis
+      - LOG_LEVEL=INFO
+      - PROCESSOR_SLEEP_INTERVAL=1
+      - MAX_MESSAGES_PER_BATCH=10
+      - SQS_WAIT_TIME_SECONDS=20

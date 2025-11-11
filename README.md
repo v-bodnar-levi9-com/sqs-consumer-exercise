@@ -1,32 +1,77 @@
-# NPS Kata
+# NPS Kata - Decoupled Architecture
 
-A prototype was developed to analyze the performance of a small e-commerce website.
+A scalable prototype for analyzing real-time e-commerce website events using a decoupled microservices architecture.
 
-The website wants to analyze different type of events that are being emitted real-time.
-Given an **SQS** queue with messages representing real time events this application keeps reading those messages and prints information about the amount of particular event types and the sum of the property value.
+## Architecture Overview
 
+The application has been decoupled into separate, scalable services:
+
+### Services
+- **Message Processor Service**: Scalable SQS consumer that processes messages and stores stats in Redis
+- **Stats API Service**: FastAPI service that provides HTTP endpoints for retrieving statistics  
+- **Redis**: Shared data store for real-time statistics aggregation
+- **LocalStack**: SQS service emulation for local development
+
+### Benefits
+- ✅ **Horizontally Scalable**: Multiple processor instances can run in parallel
+- ✅ **Resilient**: Statistics persist across container restarts
+- ✅ **Decoupled**: Services can be deployed, scaled, and updated independently
+- ✅ **Atomic Operations**: Redis ensures data consistency across multiple processors
+
+## Quick Start
+
+### Start the complete system:
+```bash
+docker-compose up
+```
+
+### Scale processor service to 5 instances:
+```bash
+docker-compose -f docker-compose.yaml -f docker-compose.scale.yaml up
+```
+
+### Access the dashboard:
+Open http://localhost:8000 in your browser for real-time statistics
+
+### API Endpoints:
+- `GET /` - Interactive dashboard
+- `GET /stats` - All event statistics
+- `GET /stats/{event_type}` - Specific event statistics
+- `GET /health` - Service health check
+- `DELETE /stats` - Reset all statistics
+
+## Architecture Components
+
+### Message Processor (`src/processor/`)
+- Consumes SQS messages in batches
+- Validates message schemas
+- Atomically updates Redis counters
+- Supports graceful shutdown
+- **Horizontally scalable**
+
+### Stats API (`src/api/`)
+- FastAPI service for statistics retrieval
+- Real-time dashboard with auto-refresh
+- RESTful API for programmatic access
+- Health monitoring
+
+### Shared Components (`src/shared/`)
+- **schemas.py**: Pydantic models for validation
+- **config.py**: Environment-based configuration
+- **redis_client.py**: Redis operations and connection management
 
 ## Container Usage
 
-Build runtime container:
+### Build individual services:
+
+Build processor container:
 ```bash
-docker build -t nps-kata:latest -f Dockerfile .
-```
-Run application container (example, overriding queue name if needed):
-```bash
-docker run --rm -e SQS_QUEUE_NAME=hands-on-interview nps-kata:latest
+docker build -t nps-processor:latest -f Dockerfile.processor .
 ```
 
-Build event producer container:
+Build API container:
 ```bash
-docker build -t nps-kata-producer:latest -f Dockerfile.producer .
-```
-Run producer:
-```bash
-docker run --rm nps-kata-producer:latest
-```
-
-Both images install dependencies via Poetry directly; no `requirements.txt` is used during the build anymore.
+docker build -t nps-api:latest -f Dockerfile.api .
 
 ## Testing
 

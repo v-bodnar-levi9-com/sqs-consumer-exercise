@@ -1,0 +1,22 @@
+FROM python:3.10-slim
+
+ENV POETRY_VERSION=1.8.3 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache \
+    PIP_DISABLE_PIP_VERSION_CHECK=on
+
+RUN pip install poetry==$POETRY_VERSION
+
+WORKDIR /app
+
+COPY pyproject.toml poetry.lock ./
+
+COPY src ./src
+
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-dev \
+    && rm -rf $POETRY_CACHE_DIR
+
+EXPOSE 8000
+
+CMD ["python", "-m", "src.api.main"]
