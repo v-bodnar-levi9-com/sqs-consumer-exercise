@@ -4,6 +4,9 @@ import json
 import logging
 import os
 import localstack_client.session as boto3
+from pydantic import ValidationError
+
+from .schemas import SQSMessageBody
 
 # Configure logging
 logging.basicConfig(
@@ -47,27 +50,30 @@ def process_messages(queue_url, event_counts, event_sums):
     
     for message in response['Messages']:
         body = message['Body']
+        receipt_handle = message['ReceiptHandle']
+        
         try:
-            body = json.loads(body)
-        except json.JSONDecodeError:
-            logger.warning("Received message with invalid JSON, deleting message")
-            client.delete_message(QueueUrl=queue_url, ReceiptHandle=message['ReceiptHandle'])
+            body_dict = json.loads(body)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Received message with invalid JSON: {e}, deleting message")
+            client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
             continue
-        if 'type' not in body or 'value' not in body:
-            logger.warning("Received message missing required fields 'type' or 'value', deleting message")
-            client.delete_message(QueueUrl=queue_url, ReceiptHandle=message['ReceiptHandle'])
-            continue
-        message_type = body['type']
+        
         try:
-            message_value = float(body['value'])
-        except (TypeError, ValueError):
-            logger.warning(f"Received message with invalid value: {body['value']}, deleting message")
-            client.delete_message(QueueUrl=queue_url, ReceiptHandle=message['ReceiptHandle'])
+            message_data = SQSMessageBody(**body_dict)
+            logger.debug(f"Successfully validated message: type={message_data.type}, value={message_data.value}")
+        except ValidationError as e:
+            logger.warning(f"Received message with invalid schema: {e}, deleting message")
+            client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
             continue
+        
+        message_type = message_data.type
+        message_value = float(message_data.value)
+        
         event_counts[message_type] += 1
         event_sums[message_type] += message_value
         logger.debug(f"Processed message: type={message_type}, value={message_value}")
-        client.delete_message(QueueUrl=queue_url, ReceiptHandle=message['ReceiptHandle'])
+        client.delete_message(QueueUrl=queue_url, ReceiptHandle=receipt_handle)
 
 def print_stats(event_counts, event_sums):
     for key in event_counts:
