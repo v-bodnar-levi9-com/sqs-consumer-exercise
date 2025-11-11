@@ -5,22 +5,6 @@ A prototype was developed to analyze the performance of a small e-commerce websi
 The website wants to analyze different type of events that are being emitted real-time.
 Given an **SQS** queue with messages representing real time events this application keeps reading those messages and prints information about the amount of particular event types and the sum of the property value.
 
-## Setup (with Poetry)
-
-This project now uses [Poetry](https://python-poetry.org/) for dependency and environment management.
-
-1. Install Poetry (see official docs) or via `pipx install poetry`.
-2. Install dependencies:
-    ```bash
-    poetry install
-    ```
-3. Run the backend event server using `./.server/run.sh` (requires Docker).
-4. Start the app:
-    ```bash
-    poetry run nps-kata
-    ```
-
-Legacy `requirements.txt` is kept temporarily for existing Dockerfiles; they can be updated to use `poetry export -f requirements.txt -o requirements.txt --without-hashes` in a future step.
 
 ## Container Usage
 
@@ -43,6 +27,54 @@ docker run --rm nps-kata-producer:latest
 ```
 
 Both images install dependencies via Poetry directly; no `requirements.txt` is used during the build anymore.
+
+## Testing
+
+This project includes a comprehensive test suite that covers all FastAPI-related functionality.
+
+### Quick Start
+
+Run all tests:
+```bash
+poetry run pytest
+```
+
+### Test Categories
+
+- **Unit Tests**: Test individual components (schemas, endpoints, utilities)
+- **Integration Tests**: Test component interactions and complete workflows
+- **FastAPI Tests**: HTTP endpoints, OpenAPI documentation, middleware
+- **Schema Tests**: Pydantic model validation and serialization
+
+### Running Specific Test Types
+
+Run only unit tests:
+```bash
+poetry run pytest -m unit
+```
+
+Run only integration tests:
+```bash
+poetry run pytest -m integration
+```
+
+Run tests for specific modules:
+```bash
+poetry run pytest test/test_schemas.py      # Schema validation tests
+poetry run pytest test/test_fastapi_endpoints.py  # API endpoint tests
+```
+
+### Using the Test Script
+
+A convenience script is provided for common testing scenarios:
+```bash
+./run_tests.sh
+```
+
+This script will:
+1. Install dependencies
+2. Run all tests with verbose output
+3. Run unit and integration tests separately
 
 ## Event Schema
 
