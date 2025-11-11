@@ -2,7 +2,7 @@
 name = "nps-kata"
 version = "0.1.0"
 description = "NPS Kata prototype processing SQS events"
-authors = ["Unknown <example@example.com>"]
+authors = ["Developer v.bodnar@levi9.com"]
 license = "MIT"
 readme = "README.md"
 packages = [ { include = "src" } ]
