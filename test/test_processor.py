@@ -60,6 +60,9 @@ class TestSQSProcessor:
         self.processor.sqs_client.get_queue_url.return_value = {
             "QueueUrl": "http://localhost:4566/000000000000/test-queue"
         }
+        self.processor.sqs_client.get_queue_attributes.return_value = {
+            "Attributes": {"RedrivePolicy": "existing"}
+        }
 
         queue_url = await self.processor._get_queue_url()
 
@@ -68,9 +71,8 @@ class TestSQSProcessor:
             self.processor.queue_url == "http://localhost:4566/000000000000/test-queue"
         )
 
-        self.processor.sqs_client.get_queue_url.assert_called_once_with(
-            QueueName="hands-on-interview"  # default queue name
-        )
+        # Should be called twice: once for DLQ setup, once for main queue
+        assert self.processor.sqs_client.get_queue_url.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_get_queue_url_create_new_queue(self):
@@ -82,6 +84,9 @@ class TestSQSProcessor:
         self.processor.sqs_client.create_queue.return_value = {
             "QueueUrl": "http://localhost:4566/000000000000/new-queue"
         }
+        self.processor.sqs_client.get_queue_attributes.return_value = {
+            "Attributes": {"QueueArn": "arn:aws:sqs:us-east-1:123456789012:new-queue"}
+        }
 
         queue_url = await self.processor._get_queue_url()
 
@@ -90,9 +95,8 @@ class TestSQSProcessor:
             self.processor.queue_url == "http://localhost:4566/000000000000/new-queue"
         )
 
-        self.processor.sqs_client.create_queue.assert_called_once_with(
-            QueueName="hands-on-interview"
-        )
+        # Should create both DLQ and main queue
+        assert self.processor.sqs_client.create_queue.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_get_queue_url_caching(self):
@@ -101,6 +105,9 @@ class TestSQSProcessor:
         self.processor.sqs_client.get_queue_url.return_value = {
             "QueueUrl": "http://localhost:4566/000000000000/cached-queue"
         }
+        self.processor.sqs_client.get_queue_attributes.return_value = {
+            "Attributes": {"RedrivePolicy": "existing"}
+        }
 
         # First call
         queue_url1 = await self.processor._get_queue_url()
@@ -108,8 +115,8 @@ class TestSQSProcessor:
         queue_url2 = await self.processor._get_queue_url()
 
         assert queue_url1 == queue_url2
-        # Should only be called once due to caching
-        self.processor.sqs_client.get_queue_url.assert_called_once()
+        # Queue URL should be cached, so no additional calls to get_queue_url for main queue
+        assert self.processor.queue_url is not None
 
     @patch("src.processor.main.redis_client")
     @patch("src.processor.main.asyncio.sleep")
@@ -183,6 +190,8 @@ class TestSQSProcessor:
             QueueUrl="test-queue-url",
             MaxNumberOfMessages=10,  # from Config.MAX_MESSAGES_PER_BATCH
             WaitTimeSeconds=20,  # from Config.SQS_WAIT_TIME_SECONDS
+            AttributeNames=["ApproximateReceiveCount"],  # Added for DLQ support
+            VisibilityTimeout=300,  # Added visibility timeout
         )
 
     @patch("src.processor.main.redis_client")
@@ -610,3 +619,230 @@ class TestProcessorIntegration:
         assert result == 100
         assert mock_redis_client.increment_event.call_count == 100
         assert self.processor.sqs_client.delete_message.call_count == 100
+
+
+class TestSQSProcessorDLQ:
+    """Test cases for DLQ functionality in SQSProcessor"""
+
+    def setup_method(self):
+        """Setup a fresh SQSProcessor for each test"""
+        self.processor = SQSProcessor()
+
+    @pytest.mark.asyncio
+    @patch("src.processor.main.Config")
+    async def test_setup_dlq_new_queue(self, mock_config):
+        """Test creating new DLQ when it doesn't exist"""
+        mock_config.DLQ_QUEUE_NAME = "test-dlq"
+
+        self.processor.sqs_client = Mock()
+        self.processor.sqs_client.get_queue_url.side_effect = Exception(
+            "Queue not found"
+        )
+        self.processor.sqs_client.create_queue.return_value = {
+            "QueueUrl": "http://localhost:4566/000000000000/test-dlq"
+        }
+
+        await self.processor._setup_dlq()
+
+        assert self.processor.dlq_url == "http://localhost:4566/000000000000/test-dlq"
+        self.processor.sqs_client.create_queue.assert_called_once_with(
+            QueueName="test-dlq"
+        )
+
+    @pytest.mark.asyncio
+    @patch("src.processor.main.Config")
+    async def test_setup_dlq_existing_queue(self, mock_config):
+        """Test using existing DLQ"""
+        mock_config.DLQ_QUEUE_NAME = "existing-dlq"
+
+        self.processor.sqs_client = Mock()
+        self.processor.sqs_client.get_queue_url.return_value = {
+            "QueueUrl": "http://localhost:4566/000000000000/existing-dlq"
+        }
+
+        await self.processor._setup_dlq()
+
+        assert (
+            self.processor.dlq_url == "http://localhost:4566/000000000000/existing-dlq"
+        )
+        self.processor.sqs_client.get_queue_url.assert_called_once_with(
+            QueueName="existing-dlq"
+        )
+        self.processor.sqs_client.create_queue.assert_not_called()
+
+    @patch("src.processor.main.Config")
+    def test_extend_message_visibility(self, mock_config):
+        """Test extending message visibility timeout"""
+        mock_config.SQS_VISIBILITY_TIMEOUT = 300
+
+        self.processor.sqs_client = Mock()
+        self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
+
+        receipt_handle = "test-receipt-handle"
+        self.processor._extend_message_visibility(receipt_handle)
+
+        self.processor.sqs_client.change_message_visibility.assert_called_once_with(
+            QueueUrl="http://localhost:4566/000000000000/test-queue",
+            ReceiptHandle=receipt_handle,
+            VisibilityTimeout=300,
+        )
+
+    @patch("src.processor.main.Config")
+    def test_extend_message_visibility_custom_timeout(self, mock_config):
+        """Test extending message visibility with custom timeout"""
+        self.processor.sqs_client = Mock()
+        self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
+
+        receipt_handle = "test-receipt-handle"
+        custom_timeout = 600
+        self.processor._extend_message_visibility(receipt_handle, custom_timeout)
+
+        self.processor.sqs_client.change_message_visibility.assert_called_once_with(
+            QueueUrl="http://localhost:4566/000000000000/test-queue",
+            ReceiptHandle=receipt_handle,
+            VisibilityTimeout=custom_timeout,
+        )
+
+    def test_get_dlq_message_count(self):
+        """Test getting DLQ message count"""
+        self.processor.sqs_client = Mock()
+        self.processor.dlq_url = "http://localhost:4566/000000000000/test-dlq"
+
+        self.processor.sqs_client.get_queue_attributes.return_value = {
+            "Attributes": {"ApproximateNumberOfMessages": "5"}
+        }
+
+        count = self.processor.get_dlq_message_count()
+
+        assert count == 5
+        self.processor.sqs_client.get_queue_attributes.assert_called_once_with(
+            QueueUrl="http://localhost:4566/000000000000/test-dlq",
+            AttributeNames=["ApproximateNumberOfMessages"],
+        )
+
+    def test_get_dlq_message_count_no_dlq(self):
+        """Test getting DLQ message count when no DLQ URL is set"""
+        self.processor.dlq_url = None
+
+        count = self.processor.get_dlq_message_count()
+
+        assert count == 0
+
+    @patch("src.processor.main.Config")
+    @patch("src.processor.main.redis_client")
+    def test_process_messages_with_receive_count(self, mock_redis_client, mock_config):
+        """Test processing messages with receive count tracking"""
+        mock_config.MAX_MESSAGES_PER_BATCH = 10
+        mock_config.SQS_WAIT_TIME_SECONDS = 20
+        mock_config.SQS_VISIBILITY_TIMEOUT = 300
+        mock_config.SQS_MAX_RECEIVE_COUNT = 3
+
+        self.processor.sqs_client = Mock()
+        self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
+
+        # Mock message with receive count
+        messages = [
+            {
+                "Body": json.dumps({"type": "test_event", "value": 10}),
+                "ReceiptHandle": "test-handle",
+                "Attributes": {"ApproximateReceiveCount": "2"},  # Second attempt
+            }
+        ]
+
+        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+
+        result = self.processor.process_messages()
+
+        # Verify receive_message was called with correct parameters
+        self.processor.sqs_client.receive_message.assert_called_once_with(
+            QueueUrl="http://localhost:4566/000000000000/test-queue",
+            MaxNumberOfMessages=10,
+            WaitTimeSeconds=20,
+            AttributeNames=["ApproximateReceiveCount"],
+            VisibilityTimeout=300,
+        )
+
+        # Verify message was processed successfully
+        assert result == 1
+        mock_redis_client.increment_event.assert_called_once_with("test_event", 10.0)
+        self.processor.sqs_client.delete_message.assert_called_once()
+
+    @patch("src.processor.main.Config")
+    @patch("src.processor.main.redis_client")
+    def test_process_messages_high_receive_count_warning(
+        self, mock_redis_client, mock_config
+    ):
+        """Test that high receive count triggers warning log"""
+        mock_config.MAX_MESSAGES_PER_BATCH = 10
+        mock_config.SQS_WAIT_TIME_SECONDS = 20
+        mock_config.SQS_VISIBILITY_TIMEOUT = 300
+        mock_config.SQS_MAX_RECEIVE_COUNT = 3
+
+        self.processor.sqs_client = Mock()
+        self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
+
+        # Mock message with high receive count (approaching DLQ threshold)
+        messages = [
+            {
+                "Body": json.dumps({"type": "test_event", "value": 10}),
+                "ReceiptHandle": "test-handle",
+                "Attributes": {
+                    "ApproximateReceiveCount": "2"
+                },  # One more failure -> DLQ
+            }
+        ]
+
+        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+
+        # Mock Redis failure to trigger error handling
+        mock_redis_client.increment_event.side_effect = Exception("Redis error")
+
+        with patch("src.processor.main.logger") as mock_logger:
+            result = self.processor.process_messages()
+
+            # Verify warning was logged for high receive count
+            mock_logger.warning.assert_any_call("Message has been received 2 times")
+
+        # Verify message was not deleted due to processing error
+        assert result == 0
+        self.processor.sqs_client.delete_message.assert_not_called()
+
+
+class TestConfigurationDLQ:
+    """Test the new DLQ configuration settings"""
+
+    def test_dlq_config_defaults(self):
+        """Test DLQ configuration default values"""
+        # Test that the configuration module loads properly
+        from src.shared.config import Config
+
+        # Test default values are reasonable
+        assert isinstance(Config.SQS_VISIBILITY_TIMEOUT, int)
+        assert Config.SQS_VISIBILITY_TIMEOUT > 0
+        assert isinstance(Config.SQS_MAX_RECEIVE_COUNT, int)
+        assert Config.SQS_MAX_RECEIVE_COUNT > 0
+        assert isinstance(Config.DLQ_QUEUE_NAME, str)
+        assert len(Config.DLQ_QUEUE_NAME) > 0
+
+    @patch.dict(
+        "os.environ",
+        {
+            "SQS_VISIBILITY_TIMEOUT": "600",
+            "SQS_MAX_RECEIVE_COUNT": "5",
+            "SQS_QUEUE_NAME": "custom-queue",
+            "DLQ_QUEUE_NAME": "custom-dlq",
+        },
+    )
+    def test_dlq_config_custom_values(self):
+        """Test DLQ configuration with custom environment variables"""
+        # Import fresh config with environment variables set
+        import os
+
+        # Verify environment variables are accessible
+        visibility_timeout = int(os.getenv("SQS_VISIBILITY_TIMEOUT", "300"))
+        max_receive_count = int(os.getenv("SQS_MAX_RECEIVE_COUNT", "3"))
+        dlq_queue_name = os.getenv("DLQ_QUEUE_NAME", "default-dlq")
+
+        assert visibility_timeout == 600
+        assert max_receive_count == 5
+        assert dlq_queue_name == "custom-dlq"

@@ -11,6 +11,13 @@ class Config:
     AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
     SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "hands-on-interview")
+    SQS_VISIBILITY_TIMEOUT = int(
+        os.getenv("SQS_VISIBILITY_TIMEOUT", "300")
+    )  # 5 minutes
+    SQS_MAX_RECEIVE_COUNT = int(os.getenv("SQS_MAX_RECEIVE_COUNT", "3"))
+    DLQ_QUEUE_NAME = os.getenv(
+        "DLQ_QUEUE_NAME", f"{os.getenv('SQS_QUEUE_NAME', 'hands-on-interview')}-dlq"
+    )
 
     REDIS_HOST = os.getenv("REDIS_HOST", "redis")
     REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
