@@ -2,6 +2,7 @@ import logging
 from typing import Dict, List, Optional
 
 import redis
+from redis.connection import ConnectionPool
 
 from .config import REDIS_COUNT_KEY, REDIS_EVENTS_SET, REDIS_SUM_KEY, Config
 from .schemas import EventStats
@@ -11,14 +12,21 @@ logger = logging.getLogger(__name__)
 
 class RedisClient:
     """Redis client for managing event statistics"""
+    _pool = None
 
     def __init__(self):
-        self.redis = redis.Redis(
-            host=Config.REDIS_HOST,
-            port=Config.REDIS_PORT,
-            db=Config.REDIS_DB,
-            decode_responses=True,
-        )
+        if RedisClient._pool is None:
+            RedisClient._pool = ConnectionPool(
+                host=Config.REDIS_HOST,
+                port=Config.REDIS_PORT,
+                db=Config.REDIS_DB,
+                max_connections=50,
+                decode_responses=True,
+                retry_on_timeout=True,
+                socket_connect_timeout=5,
+                socket_timeout=5,
+            )
+        self.redis = redis.Redis(connection_pool=RedisClient._pool)
 
     def ping(self) -> bool:
         """Check Redis connection"""

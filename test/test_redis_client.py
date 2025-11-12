@@ -16,22 +16,43 @@ class TestRedisClient:
         self.redis_client = RedisClient()
 
     @patch("src.shared.redis_client.redis.Redis")
-    def test_redis_client_initialization(self, mock_redis_class):
-        """Test RedisClient initialization with correct parameters"""
+    @patch("src.shared.redis_client.ConnectionPool")
+    def test_redis_client_initialization(self, mock_connection_pool_class, mock_redis_class):
+        """Test RedisClient initialization with connection pooling"""
+        mock_connection_pool_instance = Mock()
+        mock_connection_pool_class.return_value = mock_connection_pool_instance
         mock_redis_instance = Mock()
         mock_redis_class.return_value = mock_redis_instance
 
+        # Reset the class-level pool to ensure clean test
+        RedisClient._pool = None
+
         client = RedisClient()
 
-        # Verify Redis was initialized with correct parameters
-        mock_redis_class.assert_called_once_with(
+        # Verify ConnectionPool was initialized with correct parameters
+        mock_connection_pool_class.assert_called_once_with(
             host="redis",  # from Config.REDIS_HOST
             port=6379,  # from Config.REDIS_PORT
             db=0,  # from Config.REDIS_DB
+            max_connections=50,
             decode_responses=True,
+            retry_on_timeout=True,
+            socket_connect_timeout=5,
+            socket_timeout=5,
         )
 
+        # Verify Redis was initialized with the connection pool
+        mock_redis_class.assert_called_once_with(connection_pool=mock_connection_pool_instance)
+
         assert client.redis == mock_redis_instance
+
+        # Test that subsequent instances reuse the same pool
+        client2 = RedisClient()
+        # ConnectionPool should still be called only once
+        mock_connection_pool_class.assert_called_once()
+
+        # Reset for other tests
+        RedisClient._pool = None
 
     def test_ping_success(self):
         """Test successful Redis ping"""
