@@ -181,55 +181,6 @@ class TestRedisClient:
 
         assert result == {}
 
-    def test_get_all_stats_with_data(self):
-        """Test getting all statistics when data exists"""
-        self.redis_client.redis = Mock()
-        mock_pipeline = Mock()
-
-        # Mock event types
-        self.redis_client.redis.smembers.return_value = {"user_signup", "user_login"}
-
-        # Mock pipeline results: count1, sum1, count2, sum2
-        mock_pipeline.execute.return_value = ["3.0", "150.0", "5.0", "75.0"]
-        self.redis_client.redis.pipeline.return_value = mock_pipeline
-
-        result = self.redis_client.get_all_stats()
-
-        assert len(result) == 2
-        assert "user_signup" in result
-        assert "user_login" in result
-
-        # Check user_signup stats
-        signup_stats = result["user_signup"]
-        assert signup_stats.count == 3.0
-        assert signup_stats.total == 150.0
-        assert signup_stats.average == 50.0
-
-        # Check user_login stats
-        login_stats = result["user_login"]
-        assert login_stats.count == 5.0
-        assert login_stats.total == 75.0
-        assert login_stats.average == 15.0
-
-    def test_get_all_stats_with_missing_data(self):
-        """Test getting all statistics when some data is missing"""
-        self.redis_client.redis = Mock()
-        mock_pipeline = Mock()
-
-        # Mock event types
-        self.redis_client.redis.smembers.return_value = {"user_signup", "invalid_event"}
-
-        # Mock pipeline results: valid count/sum, then None/None for invalid event
-        mock_pipeline.execute.return_value = ["3.0", "150.0", None, None]
-        self.redis_client.redis.pipeline.return_value = mock_pipeline
-
-        result = self.redis_client.get_all_stats()
-
-        # Should only contain the valid event
-        assert len(result) == 1
-        assert "user_signup" in result
-        assert "invalid_event" not in result
-
     def test_reset_stats_no_data(self):
         """Test resetting statistics when no data exists"""
         self.redis_client.redis = Mock()

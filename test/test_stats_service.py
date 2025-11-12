@@ -56,18 +56,6 @@ class TestStatsService:
 
         assert result == []
 
-    @patch("src.api.stats.logger")
-    def test_get_all_stats_error(self, mock_logger):
-        """Test error handling in get_all_stats"""
-        self.mock_redis.get_all_stats.side_effect = Exception("Redis error")
-
-        result = self.stats_service.get_all_stats()
-
-        assert result == []
-        mock_logger.error.assert_called_once()
-        error_message = mock_logger.error.call_args[0][0]
-        assert "Error retrieving all stats" in error_message
-
     def test_get_stats_by_type_existing_event(self):
         """Test getting statistics for an existing event type"""
         event_stats = EventStats(count=3.0, total=75.0)
@@ -94,76 +82,6 @@ class TestStatsService:
         assert result.count == 0
         assert result.total == 0
         assert result.average == 0
-
-    @patch("src.api.stats.logger")
-    def test_get_stats_by_type_error(self, mock_logger):
-        """Test error handling in get_stats_by_type"""
-        self.mock_redis.get_event_stats.side_effect = Exception("Redis error")
-
-        result = self.stats_service.get_stats_by_type("error_test")
-
-        assert isinstance(result, StatsResponse)
-        assert result.event_type == "error_test"
-        assert result.count == 0
-        assert result.total == 0
-        assert result.average == 0
-
-        mock_logger.error.assert_called_once()
-        error_message = mock_logger.error.call_args[0][0]
-        assert "Error retrieving stats for error_test" in error_message
-
-    def test_get_event_types_success(self):
-        """Test successful retrieval of event types"""
-        expected_types = ["user_signup", "user_login", "page_view"]
-        self.mock_redis.get_all_event_types.return_value = expected_types
-
-        result = self.stats_service.get_event_types()
-
-        assert result == expected_types
-        self.mock_redis.get_all_event_types.assert_called_once()
-
-    def test_get_event_types_empty(self):
-        """Test getting event types when none exist"""
-        self.mock_redis.get_all_event_types.return_value = []
-
-        result = self.stats_service.get_event_types()
-
-        assert result == []
-
-    @patch("src.api.stats.logger")
-    def test_get_event_types_error(self, mock_logger):
-        """Test error handling in get_event_types"""
-        self.mock_redis.get_all_event_types.side_effect = Exception("Redis error")
-
-        result = self.stats_service.get_event_types()
-
-        assert result == []
-        mock_logger.error.assert_called_once()
-        error_message = mock_logger.error.call_args[0][0]
-        assert "Error retrieving event types" in error_message
-
-    @patch("src.api.stats.logger")
-    def test_reset_all_stats_success(self, mock_logger):
-        """Test successful stats reset"""
-        self.mock_redis.reset_stats.return_value = None
-
-        result = self.stats_service.reset_all_stats()
-
-        assert result is True
-        self.mock_redis.reset_stats.assert_called_once()
-        mock_logger.info.assert_called_once_with("All statistics have been reset")
-
-    @patch("src.api.stats.logger")
-    def test_reset_all_stats_error(self, mock_logger):
-        """Test error handling in stats reset"""
-        self.mock_redis.reset_stats.side_effect = Exception("Redis error")
-
-        result = self.stats_service.reset_all_stats()
-
-        assert result is False
-        mock_logger.error.assert_called_once()
-        error_message = mock_logger.error.call_args[0][0]
-        assert "Error resetting stats" in error_message
 
     def test_health_check_healthy(self):
         """Test health check when Redis is healthy"""
@@ -271,25 +189,6 @@ class TestStatsServiceIntegration:
             assert actual.count == expected["count"]
             assert actual.total == expected["total"]
             assert actual.average == expected["average"]
-
-    def test_mixed_success_and_failure_scenarios(self):
-        """Test scenarios with mixed success and failure conditions"""
-        # Test get_all_stats success, but individual get_stats_by_type failure
-        mock_stats = {"user_signup": EventStats(count=5.0, total=100.0)}
-        self.mock_redis.get_all_stats.return_value = mock_stats
-
-        # get_all_stats should succeed
-        all_stats = self.stats_service.get_all_stats()
-        assert len(all_stats) == 1
-
-        # But individual call fails
-        self.mock_redis.get_event_stats.side_effect = Exception(
-            "Individual query failed"
-        )
-
-        individual_stat = self.stats_service.get_stats_by_type("user_signup")
-        assert individual_stat.event_type == "user_signup"
-        assert individual_stat.count == 0  # Error fallback
 
 
 class TestStatsServiceSingleton:

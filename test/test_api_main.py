@@ -98,6 +98,51 @@ class TestAPIEndpoints:
         mock_logger.error.assert_called_once()
 
     def test_get_stats_by_type_success(self, test_client, mock_stats_service):
+        """Test successful retrieval of stats for a specific type"""
+        mock_stat = StatsResponse(
+            event_type="user_signup", count=10.0, total=250.0, average=25.0
+        )
+        mock_stats_service.get_stats_by_type.return_value = mock_stat
+
+        response = test_client.get("/stats/user_signup")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["event_type"] == "user_signup"
+        assert data["count"] == 10.0
+        assert data["total"] == 250.0
+        assert data["average"] == 25.0
+        mock_stats_service.get_stats_by_type.assert_called_once_with("user_signup")
+
+    def test_get_stats_by_type_special_characters(
+        self, test_client, mock_stats_service
+    ):
+        """Test stats endpoint with special characters in event type"""
+        mock_stat = StatsResponse(
+            event_type="user-login_v2", count=5.0, total=100.0, average=20.0
+        )
+        mock_stats_service.get_stats_by_type.return_value = mock_stat
+
+        response = test_client.get("/stats/user-login_v2")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["event_type"] == "user-login_v2"
+
+    @patch("src.api.main.logger")
+    def test_get_stats_by_type_error(
+        self, mock_logger, test_client, mock_stats_service
+    ):
+        """Test error handling in get_stats_by_type endpoint"""
+        mock_stats_service.get_stats_by_type.side_effect = Exception("Database error")
+
+        response = test_client.get("/stats/error_test")
+
+        assert response.status_code == 500
+        assert response.json() == {"detail": "Internal server error"}
+        mock_logger.error.assert_called_once()
+
+    def test_get_stats_by_type_success(self, test_client, mock_stats_service):
         """Test successful retrieval of stats by event type"""
         mock_stat = StatsResponse(
             event_type="user_signup", count=3.0, total=75.0, average=25.0
@@ -153,79 +198,15 @@ class TestAPIEndpoints:
         assert response.json() == {"detail": "Internal server error"}
         mock_logger.error.assert_called_once()
 
-    def test_get_event_types_success(self, test_client, mock_stats_service):
-        """Test successful retrieval of event types"""
-        mock_types = ["user_signup", "user_login", "page_view"]
-        mock_stats_service.get_event_types.return_value = mock_types
-
-        response = test_client.get("/event-types")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data == {"event_types": mock_types}
-        mock_stats_service.get_event_types.assert_called_once()
-
-    def test_get_event_types_empty(self, test_client, mock_stats_service):
-        """Test getting event types when none exist"""
-        mock_stats_service.get_event_types.return_value = []
-
-        response = test_client.get("/event-types")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data == {"event_types": []}
-
-    @patch("src.api.main.logger")
-    def test_get_event_types_error(self, mock_logger, test_client, mock_stats_service):
-        """Test error handling in get_event_types endpoint"""
-        mock_stats_service.get_event_types.side_effect = Exception("Database error")
-
-        response = test_client.get("/event-types")
-
-        assert response.status_code == 500
-        assert response.json() == {"detail": "Internal server error"}
-        mock_logger.error.assert_called_once()
-
-    def test_reset_stats_success(self, test_client, mock_stats_service):
-        """Test successful stats reset"""
-        mock_stats_service.reset_all_stats.return_value = True
-
-        response = test_client.delete("/stats")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data == {"message": "All statistics have been reset"}
-        mock_stats_service.reset_all_stats.assert_called_once()
-
-    def test_reset_stats_failure(self, test_client, mock_stats_service):
-        """Test stats reset when service returns failure"""
-        mock_stats_service.reset_all_stats.return_value = False
-
-        response = test_client.delete("/stats")
-
-        assert response.status_code == 500
-        assert response.json() == {"detail": "Failed to reset statistics"}
-
-    @patch("src.api.main.logger")
-    def test_reset_stats_error(self, mock_logger, test_client, mock_stats_service):
-        """Test error handling in reset_stats endpoint"""
-        mock_stats_service.reset_all_stats.side_effect = Exception("Database error")
-
-        response = test_client.delete("/stats")
-
-        assert response.status_code == 500
-        assert response.json() == {"detail": "Internal server error"}
-        mock_logger.error.assert_called_once()
-
-    def test_dashboard_endpoint(self, test_client, mock_stats_service):
-        """Test dashboard HTML endpoint"""
+    def test_index_endpoint(self, test_client):
+        """Test index JSON endpoint"""
         response = test_client.get("/")
 
         assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
-        assert "SQS Consumer Statistics Dashboard" in response.text
-        assert "refresh-btn" in response.text
-        assert "fetchStats" in response.text  # JavaScript function
+        assert "application/json" in response.headers["content-type"]
+        data = response.json()
+        assert "message" in data
+        assert data["message"] == "Welcome to the SQS Consumer Stats API"
 
     def test_method_not_allowed(self, test_client):
         """Test that endpoints reject inappropriate HTTP methods"""
@@ -237,8 +218,8 @@ class TestAPIEndpoints:
         response = test_client.post("/stats")
         assert response.status_code == 405
 
-        # Event types should only accept GET
-        response = test_client.post("/event-types")
+        # Individual stats endpoint should only accept GET
+        response = test_client.post("/stats/user_signup")
         assert response.status_code == 405
 
     def test_nonexistent_endpoints(self, test_client):
@@ -284,7 +265,6 @@ class TestAPIMetadata:
         assert "/health" in paths
         assert "/stats" in paths
         assert "/stats/{event_type}" in paths
-        assert "/event-types" in paths
         assert "/" in paths
 
         # Verify stats endpoint has response model
@@ -358,17 +338,6 @@ class TestAPIResponseModels:
         required_fields = {"event_type", "count", "total", "average"}
         assert set(data.keys()) == required_fields
 
-    def test_event_types_response_structure(self, test_client, mock_stats_service):
-        """Test event types response structure"""
-        mock_stats_service.get_event_types.return_value = ["type1", "type2"]
-
-        response = test_client.get("/event-types")
-        assert response.status_code == 200
-
-        data = response.json()
-        assert "event_types" in data
-        assert isinstance(data["event_types"], list)
-
 
 class TestAPIIntegration:
     """Integration tests for the API"""
@@ -376,7 +345,6 @@ class TestAPIIntegration:
     def test_full_api_workflow(self, test_client, mock_stats_service):
         """Test a complete API workflow"""
         # Setup mock data
-        mock_types = ["user_signup", "user_login"]
         mock_all_stats = [
             StatsResponse(
                 event_type="user_signup", count=5.0, total=100.0, average=20.0
@@ -387,20 +355,13 @@ class TestAPIIntegration:
             event_type="user_signup", count=5.0, total=100.0, average=20.0
         )
 
-        mock_stats_service.get_event_types.return_value = mock_types
         mock_stats_service.get_all_stats.return_value = mock_all_stats
         mock_stats_service.get_stats_by_type.return_value = mock_individual_stat
         mock_stats_service.health_check.return_value = {"status": "healthy"}
-        mock_stats_service.reset_all_stats.return_value = True
 
         # Test health check
         response = test_client.get("/health")
         assert response.status_code == 200
-
-        # Test get event types
-        response = test_client.get("/event-types")
-        assert response.status_code == 200
-        assert len(response.json()["event_types"]) == 2
 
         # Test get all stats
         response = test_client.get("/stats")
@@ -412,14 +373,10 @@ class TestAPIIntegration:
         assert response.status_code == 200
         assert response.json()["event_type"] == "user_signup"
 
-        # Test reset stats
-        response = test_client.delete("/stats")
-        assert response.status_code == 200
-
-        # Test dashboard
+        # Test index endpoint
         response = test_client.get("/")
         assert response.status_code == 200
-        assert "html" in response.headers["content-type"]
+        assert "application/json" in response.headers["content-type"]
 
     def test_cors_headers(self, test_client):
         """Test CORS headers if configured"""
@@ -432,14 +389,10 @@ class TestAPIIntegration:
         """Test that all endpoints return consistent error responses"""
         mock_stats_service.get_all_stats.side_effect = Exception("Test error")
         mock_stats_service.get_stats_by_type.side_effect = Exception("Test error")
-        mock_stats_service.get_event_types.side_effect = Exception("Test error")
-        mock_stats_service.reset_all_stats.side_effect = Exception("Test error")
 
         endpoints = [
             ("GET", "/stats"),
             ("GET", "/stats/test"),
-            ("GET", "/event-types"),
-            ("DELETE", "/stats"),
         ]
 
         for method, endpoint in endpoints:
@@ -448,7 +401,7 @@ class TestAPIIntegration:
             assert response.json() == {"detail": "Internal server error"}
 
 
-@patch("src.api.main.uvicorn")
+@patch("uvicorn.run")
 @patch("src.api.main.Config")
 def test_main_function(mock_config, mock_uvicorn):
     """Test the main function entry point"""
@@ -459,4 +412,4 @@ def test_main_function(mock_config, mock_uvicorn):
 
     main()
 
-    mock_uvicorn.run.assert_called_once_with(app, host="127.0.0.1", port=9000)
+    mock_uvicorn.assert_called_once_with(app, host="127.0.0.1", port=9000)

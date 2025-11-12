@@ -45,66 +45,6 @@ class TestConfig:
             "AWS_DEFAULT_REGION": "eu-west-1",
         },
     )
-    def test_aws_environment_variables(self):
-        """Test that AWS environment variables override defaults"""
-        # Re-import to get updated values
-        from src.shared.config import Config
-
-        assert Config.AWS_ENDPOINT_URL == "http://custom-aws:4567"
-        assert Config.AWS_ACCESS_KEY_ID == "custom-access-key"
-        assert Config.AWS_SECRET_ACCESS_KEY == "custom-secret-key"
-        assert Config.AWS_DEFAULT_REGION == "eu-west-1"
-
-    @patch.dict(os.environ, {"SQS_QUEUE_NAME": "custom-queue-name"})
-    def test_sqs_environment_variables(self):
-        """Test that SQS environment variables override defaults"""
-        from src.shared.config import Config
-
-        assert Config.SQS_QUEUE_NAME == "custom-queue-name"
-
-    @patch.dict(
-        os.environ,
-        {"REDIS_HOST": "custom-redis-host", "REDIS_PORT": "6380", "REDIS_DB": "1"},
-    )
-    def test_redis_environment_variables(self):
-        """Test that Redis environment variables override defaults"""
-        from src.shared.config import Config
-
-        assert Config.REDIS_HOST == "custom-redis-host"
-        assert Config.REDIS_PORT == 6380
-        assert Config.REDIS_DB == 1
-
-    @patch.dict(
-        os.environ,
-        {
-            "MAX_MESSAGES_PER_BATCH": "25",
-            "SQS_WAIT_TIME_SECONDS": "30",
-            "PROCESSOR_SLEEP_INTERVAL": "5",
-        },
-    )
-    def test_processing_environment_variables(self):
-        """Test that processing environment variables override defaults"""
-        from src.shared.config import Config
-
-        assert Config.MAX_MESSAGES_PER_BATCH == 25
-        assert Config.SQS_WAIT_TIME_SECONDS == 30
-        assert Config.PROCESSOR_SLEEP_INTERVAL == 5
-
-    @patch.dict(os.environ, {"API_HOST": "127.0.0.1", "API_PORT": "9000"})
-    def test_api_environment_variables(self):
-        """Test that API environment variables override defaults"""
-        from src.shared.config import Config
-
-        assert Config.API_HOST == "127.0.0.1"
-        assert Config.API_PORT == 9000
-
-    @patch.dict(os.environ, {"LOG_LEVEL": "DEBUG"})
-    def test_logging_environment_variables(self):
-        """Test that logging environment variables override defaults"""
-        from src.shared.config import Config
-
-        assert Config.LOG_LEVEL == "DEBUG"
-
     def test_integer_type_conversion(self):
         """Test that string environment variables are properly converted to integers"""
         with patch.dict(

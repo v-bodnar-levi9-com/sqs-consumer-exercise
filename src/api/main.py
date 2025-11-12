@@ -65,15 +65,23 @@ async def health_check():
 @app.get("/stats", response_model=List[StatsResponse])
 async def get_all_stats():
     """Get statistics for all event types"""
-    stats = stats_service.get_all_stats()
-    return stats
+    try:
+        stats = stats_service.get_all_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error retrieving all stats: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/stats/{event_type}", response_model=StatsResponse)
 async def get_stats_by_type(event_type: str):
     """Get statistics for a specific event type"""
-    stats = stats_service.get_stats_by_type(event_type)
-    return stats
+    try:
+        stats = stats_service.get_stats_by_type(event_type)
+        return stats
+    except Exception as e:
+        logger.error(f"Error retrieving stats for {event_type}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/")

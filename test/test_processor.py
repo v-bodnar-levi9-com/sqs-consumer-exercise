@@ -389,7 +389,12 @@ class TestSQSProcessor:
         """Test run method when Redis connection fails"""
         # Mock Redis connection failure
         with patch.object(self.processor, "_wait_for_redis", return_value=False):
-            await self.processor.run()
+            # Mock sys.exit to raise an exception instead of actually exiting
+            mock_exit.side_effect = SystemExit(1)
+
+            # The test should expect SystemExit to be raised
+            with pytest.raises(SystemExit):
+                await self.processor.run()
 
         mock_exit.assert_called_once_with(1)
 
@@ -480,7 +485,7 @@ class TestSQSProcessor:
 class TestMainFunction:
     """Test cases for the main function"""
 
-    @patch("src.processor.main.asyncio.run")
+    @patch("asyncio.run")
     @patch("src.processor.main.SQSProcessor")
     def test_main_function_success(self, mock_processor_class, mock_asyncio_run):
         """Test successful execution of main function"""
@@ -492,7 +497,7 @@ class TestMainFunction:
         mock_processor_class.assert_called_once()
         mock_asyncio_run.assert_called_once_with(mock_processor.run())
 
-    @patch("src.processor.main.asyncio.run")
+    @patch("asyncio.run")
     @patch("src.processor.main.SQSProcessor")
     @patch("src.processor.main.logger")
     def test_main_function_keyboard_interrupt(
@@ -507,7 +512,7 @@ class TestMainFunction:
 
         mock_logger.info.assert_called_once_with("Processor stopped by user")
 
-    @patch("src.processor.main.asyncio.run")
+    @patch("asyncio.run")
     @patch("src.processor.main.SQSProcessor")
     @patch("src.processor.main.logger")
     @patch("src.processor.main.sys.exit")

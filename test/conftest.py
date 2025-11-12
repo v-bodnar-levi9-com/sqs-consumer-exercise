@@ -3,12 +3,13 @@ import asyncio
 import os
 from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
-from src.main import app, SQSConfig
 
 
 @pytest.fixture
 def test_client():
     """Create a test client for FastAPI app"""
+    from src.api.main import app
+
     return TestClient(app)
 
 
@@ -35,12 +36,6 @@ def mock_stats_service():
     """Create a mock stats service"""
     with patch("src.api.stats.stats_service") as mock_service:
         yield mock_service
-
-
-@pytest.fixture
-def sqs_config():
-    """Create a fresh SQSConfig instance for testing"""
-    return SQSConfig()
 
 
 @pytest.fixture
@@ -116,23 +111,9 @@ def sample_stats_response():
 @pytest.fixture
 def clean_global_state():
     """Reset global state for each test"""
-    from src.main import event_counts, event_sums
-
-    # Store original state
-    original_counts = dict(event_counts)
-    original_sums = dict(event_sums)
-
-    # Clear for test
-    event_counts.clear()
-    event_sums.clear()
-
+    # Since we moved to a microservices architecture with Redis,
+    # this fixture is no longer needed but kept for compatibility
     yield
-
-    # Restore original state
-    event_counts.clear()
-    event_counts.update(original_counts)
-    event_sums.clear()
-    event_sums.update(original_sums)
 
 
 @pytest.fixture(scope="session")
@@ -168,27 +149,12 @@ def mock_config():
         mock_config_class.API_PORT = 8000
         mock_config_class.LOG_LEVEL = "INFO"
         yield mock_config_class
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture
 def sample_sqs_message_data():
     """Sample SQS message data for testing"""
     return {"type": "user_signup", "value": 42}
-
-
-@pytest.fixture
-def sample_sqs_messages():
-    """Sample collection of SQS messages for testing"""
-    return [
-        {"type": "user_signup", "value": 1},
-        {"type": "user_login", "value": 2},
-        {"type": "user_rating", "value": 4.5},
-        {"type": "purchase", "value": 99.99},
-    ]
 
 
 # Mark all tests as unit tests by default

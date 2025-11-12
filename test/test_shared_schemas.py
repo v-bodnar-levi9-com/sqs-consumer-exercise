@@ -260,22 +260,6 @@ class TestSQSMessageBodySharedSchema:
         assert message.type == "test_event"
         assert message.value == 42.5
 
-    def test_shared_schema_consistency(self):
-        """Test that shared schema behaves consistently with main schema"""
-        # Import from both locations
-        from src.schemas import SQSMessageBody as MainSQSMessage
-        from src.shared.schemas import SQSMessageBody as SharedSQSMessage
-
-        # Create instances with same data
-        data = {"type": "consistency_test", "value": 123.45}
-        main_msg = MainSQSMessage(**data)
-        shared_msg = SharedSQSMessage(**data)
-
-        # Should have identical behavior
-        assert main_msg.type == shared_msg.type
-        assert main_msg.value == shared_msg.value
-        assert main_msg.model_dump() == shared_msg.model_dump()
-
     def test_extra_fields_config_shared(self):
         """Test that extra fields are ignored in shared schema"""
         data = {"type": "test", "value": 42, "extra_field": "ignored"}
