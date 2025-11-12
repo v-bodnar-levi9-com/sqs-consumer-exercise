@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+
 from src.shared.schemas import SQSMessageBody
 
 

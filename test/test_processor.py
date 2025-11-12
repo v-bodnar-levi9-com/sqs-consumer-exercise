@@ -1,9 +1,10 @@
-import pytest
+import asyncio
 import json
 import signal
 import time
-import asyncio
-from unittest.mock import Mock, patch, AsyncMock, call
+from unittest.mock import AsyncMock, Mock, call, patch
+
+import pytest
 from pydantic import ValidationError
 
 from src.processor.main import SQSProcessor, main

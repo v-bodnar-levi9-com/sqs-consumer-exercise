@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, List
+
 from ..shared.redis_client import redis_client
 from ..shared.schemas import StatsResponse
 

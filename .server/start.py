@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
 import json
+import logging
 import os
 import random
 import string
-import logging
-from datetime import datetime, timedelta
 import time
+from datetime import datetime, timedelta
 
 import localstack_client.session as boto3
 

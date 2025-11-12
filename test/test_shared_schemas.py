@@ -1,8 +1,9 @@
-import pytest
 import json
+
+import pytest
 from pydantic import ValidationError
 
-from src.shared.schemas import StatsResponse, EventStats, SQSMessageBody
+from src.shared.schemas import EventStats, SQSMessageBody, StatsResponse
 
 
 class TestStatsResponse:

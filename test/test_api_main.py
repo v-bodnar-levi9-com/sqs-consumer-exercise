@@ -1,8 +1,9 @@
-import pytest
 import json
-from unittest.mock import Mock, patch, AsyncMock
-from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 
 from src.api.main import app
 from src.shared.schemas import StatsResponse
@@ -311,8 +312,9 @@ class TestAPILifespan:
 
     def test_lifespan_function_exists(self):
         """Test that lifespan function is properly defined"""
-        from src.api.main import lifespan
         import inspect
+
+        from src.api.main import lifespan
 
         # Verify it's a function with contextmanager decorator
         assert inspect.isfunction(lifespan)

@@ -1,19 +1,11 @@
 #!/usr/bin/env python
-import logging
-import time
-from typing import List, Dict
-
 #!/usr/bin/env python
 import asyncio
 import logging
 import time
-from typing import List, Dict
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from typing import Dict, List
 
-from ..shared.config import Config
-from ..shared.schemas import StatsResponse
-from .stats import stats_service
 from fastapi import FastAPI, HTTPException
 
 from ..shared.config import Config

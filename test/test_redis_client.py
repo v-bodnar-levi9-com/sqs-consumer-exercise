@@ -1,10 +1,11 @@
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 import redis
-from unittest.mock import Mock, patch, MagicMock
 
+from src.shared.config import REDIS_COUNT_KEY, REDIS_EVENTS_SET, REDIS_SUM_KEY
 from src.shared.redis_client import RedisClient, redis_client
 from src.shared.schemas import EventStats
-from src.shared.config import REDIS_COUNT_KEY, REDIS_SUM_KEY, REDIS_EVENTS_SET
 
 
 class TestRedisClient:

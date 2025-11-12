@@ -1,8 +1,10 @@
-import pytest
 import os
 from unittest.mock import patch
 
-from src.shared.config import Config, REDIS_COUNT_KEY, REDIS_SUM_KEY, REDIS_EVENTS_SET
+import pytest
+
+from src.shared.config import (REDIS_COUNT_KEY, REDIS_EVENTS_SET,
+                               REDIS_SUM_KEY, Config)
 
 
 class TestConfig:
@@ -74,6 +76,7 @@ class TestConfig:
         with pytest.raises(ValueError):
             # This should raise ValueError when trying to convert 'invalid_number' to int
             from importlib import reload
+
             from src.shared import config
 
             reload(config)
@@ -103,6 +106,7 @@ class TestConfig:
 
         with patch.dict(os.environ, clean_env, clear=True):
             from importlib import reload
+
             from src.shared import config
 
             reload(config)

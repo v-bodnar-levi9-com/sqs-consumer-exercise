@@ -4,12 +4,13 @@ import logging
 import signal
 import sys
 import time
+
 import localstack_client.session as boto3
 from pydantic import ValidationError
 
 from ..shared.config import Config
-from ..shared.schemas import SQSMessageBody
 from ..shared.redis_client import redis_client
+from ..shared.schemas import SQSMessageBody
 
 # Configure logging
 logging.basicConfig(

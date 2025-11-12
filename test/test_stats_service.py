@@ -1,8 +1,9 @@
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
+
 from src.api.stats import StatsService, stats_service
-from src.shared.schemas import StatsResponse, EventStats
+from src.shared.schemas import EventStats, StatsResponse
 
 
 class TestStatsService:

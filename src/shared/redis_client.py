@@ -1,7 +1,9 @@
-import redis
 import logging
 from typing import Dict, List, Optional
-from .config import Config, REDIS_COUNT_KEY, REDIS_SUM_KEY, REDIS_EVENTS_SET
+
+import redis
+
+from .config import REDIS_COUNT_KEY, REDIS_EVENTS_SET, REDIS_SUM_KEY, Config
 from .schemas import EventStats
 
 logger = logging.getLogger(__name__)

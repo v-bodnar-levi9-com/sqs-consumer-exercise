@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field, ConfigDict
 from typing import Union
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SQSMessageBody(BaseModel):
