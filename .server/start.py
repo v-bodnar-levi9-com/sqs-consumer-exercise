@@ -68,8 +68,7 @@ def send_message(msg, queue_url):
 
 def get_num_messages(queue_url):
     res = client.get_queue_attributes(
-        QueueUrl=queue_url,
-        AttributeNames=["ApproximateNumberOfMessages"]
+        QueueUrl=queue_url, AttributeNames=["ApproximateNumberOfMessages"]
     )
     return int(res["Attributes"]["ApproximateNumberOfMessages"])
 

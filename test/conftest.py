@@ -15,7 +15,7 @@ def test_client():
 @pytest.fixture
 def mock_sqs_client():
     """Create a mock SQS client"""
-    with patch('localstack_client.session.client') as mock_client:
+    with patch("localstack_client.session.client") as mock_client:
         mock_sqs = Mock()
         mock_client.return_value = mock_sqs
         yield mock_sqs
@@ -24,7 +24,7 @@ def mock_sqs_client():
 @pytest.fixture
 def mock_redis_client():
     """Create a mock Redis client"""
-    with patch('src.shared.redis_client.redis.Redis') as mock_redis_class:
+    with patch("src.shared.redis_client.redis.Redis") as mock_redis_class:
         mock_redis = Mock()
         mock_redis_class.return_value = mock_redis
         yield mock_redis
@@ -33,7 +33,7 @@ def mock_redis_client():
 @pytest.fixture
 def mock_stats_service():
     """Create a mock stats service"""
-    with patch('src.api.stats.stats_service') as mock_service:
+    with patch("src.api.stats.stats_service") as mock_service:
         yield mock_service
 
 
@@ -48,18 +48,18 @@ def mock_environment():
     """Mock environment variables"""
     original_env = os.environ.copy()
     test_env = {
-        'SQS_QUEUE_NAME': 'test-queue',
-        'REDIS_HOST': 'test-redis',
-        'REDIS_PORT': '6380',
-        'LOG_LEVEL': 'DEBUG'
+        "SQS_QUEUE_NAME": "test-queue",
+        "REDIS_HOST": "test-redis",
+        "REDIS_PORT": "6380",
+        "LOG_LEVEL": "DEBUG",
     }
-    
+
     # Set test environment variables
     for key, value in test_env.items():
         os.environ[key] = value
-    
+
     yield test_env
-    
+
     # Restore original environment
     os.environ.clear()
     os.environ.update(original_env)
@@ -68,7 +68,7 @@ def mock_environment():
 @pytest.fixture
 def mock_processor():
     """Create a mock SQS processor"""
-    with patch('src.processor.main.SQSProcessor') as mock_processor_class:
+    with patch("src.processor.main.SQSProcessor") as mock_processor_class:
         mock_instance = Mock()
         mock_processor_class.return_value = mock_instance
         yield mock_instance
@@ -80,16 +80,13 @@ def sample_sqs_messages():
     return [
         {
             "Body": '{"type": "user_signup", "value": 42}',
-            "ReceiptHandle": "test-handle-1"
+            "ReceiptHandle": "test-handle-1",
         },
         {
             "Body": '{"type": "user_login", "value": 10.5}',
-            "ReceiptHandle": "test-handle-2"
+            "ReceiptHandle": "test-handle-2",
         },
-        {
-            "Body": '{"type": "page_view", "value": 1}',
-            "ReceiptHandle": "test-handle-3"
-        }
+        {"Body": '{"type": "page_view", "value": 1}', "ReceiptHandle": "test-handle-3"},
     ]
 
 
@@ -97,10 +94,11 @@ def sample_sqs_messages():
 def sample_event_stats():
     """Provide sample event statistics for testing"""
     from src.shared.schemas import EventStats
+
     return {
         "user_signup": EventStats(count=10.0, total=250.0),
         "user_login": EventStats(count=5.0, total=75.0),
-        "page_view": EventStats(count=100.0, total=100.0)
+        "page_view": EventStats(count=100.0, total=100.0),
     }
 
 
@@ -108,19 +106,10 @@ def sample_event_stats():
 def sample_stats_response():
     """Provide sample stats response data for testing"""
     from src.shared.schemas import StatsResponse
+
     return [
-        StatsResponse(
-            event_type="user_signup",
-            count=10.0,
-            total=250.0,
-            average=25.0
-        ),
-        StatsResponse(
-            event_type="user_login",
-            count=5.0,
-            total=75.0,
-            average=15.0
-        )
+        StatsResponse(event_type="user_signup", count=10.0, total=250.0, average=25.0),
+        StatsResponse(event_type="user_login", count=5.0, total=75.0, average=15.0),
     ]
 
 
@@ -128,17 +117,17 @@ def sample_stats_response():
 def clean_global_state():
     """Reset global state for each test"""
     from src.main import event_counts, event_sums
-    
+
     # Store original state
     original_counts = dict(event_counts)
     original_sums = dict(event_sums)
-    
+
     # Clear for test
     event_counts.clear()
     event_sums.clear()
-    
+
     yield
-    
+
     # Restore original state
     event_counts.clear()
     event_counts.update(original_counts)
@@ -159,13 +148,14 @@ def event_loop():
 def api_test_client():
     """Create a test client specifically for the API app"""
     from src.api.main import app as api_app
+
     return TestClient(api_app)
 
 
 @pytest.fixture
 def mock_config():
     """Mock the shared configuration"""
-    with patch('src.shared.config.Config') as mock_config_class:
+    with patch("src.shared.config.Config") as mock_config_class:
         mock_config_class.AWS_ENDPOINT_URL = "http://test-localstack:4566"
         mock_config_class.SQS_QUEUE_NAME = "test-queue"
         mock_config_class.REDIS_HOST = "test-redis"
@@ -187,10 +177,7 @@ def mock_config():
 @pytest.fixture
 def sample_sqs_message_data():
     """Sample SQS message data for testing"""
-    return {
-        "type": "user_signup",
-        "value": 42
-    }
+    return {"type": "user_signup", "value": 42}
 
 
 @pytest.fixture
