@@ -18,18 +18,14 @@ class TestSQSProcessor:
         """Setup a fresh SQSProcessor for each test"""
         self.processor = SQSProcessor()
 
-    @patch("src.processor.main.boto3.client")
-    def test_processor_initialization(self, mock_boto3_client):
+    def test_processor_initialization(self):
         """Test SQSProcessor initialization"""
-        mock_sqs_client = Mock()
-        mock_boto3_client.return_value = mock_sqs_client
-
         processor = SQSProcessor()
 
         assert processor.running is True
-        assert processor.sqs_client == mock_sqs_client
+        assert processor.session is not None
         assert processor.queue_url is None
-        mock_boto3_client.assert_called_once_with("sqs")
+        assert processor.dlq_url is None
 
     def test_shutdown_handler(self):
         """Test graceful shutdown signal handler"""
@@ -56,67 +52,78 @@ class TestSQSProcessor:
     @pytest.mark.asyncio
     async def test_get_queue_url_existing_queue(self):
         """Test getting queue URL for existing queue"""
-        self.processor.sqs_client = Mock()
-        self.processor.sqs_client.get_queue_url.return_value = {
-            "QueueUrl": "http://localhost:4566/000000000000/test-queue"
-        }
-        self.processor.sqs_client.get_queue_attributes.return_value = {
-            "Attributes": {"RedrivePolicy": "existing"}
-        }
 
-        queue_url = await self.processor._get_queue_url()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.get_queue_url.return_value = {
+                "QueueUrl": "http://localhost:4566/000000000000/test-queue"
+            }
+            mock_sqs.get_queue_attributes.return_value = {
+                "Attributes": {"RedrivePolicy": "existing"}
+            }
 
-        assert queue_url == "http://localhost:4566/000000000000/test-queue"
-        assert (
-            self.processor.queue_url == "http://localhost:4566/000000000000/test-queue"
-        )
+            queue_url = await self.processor._get_queue_url()
 
-        # Should be called twice: once for DLQ setup, once for main queue
-        assert self.processor.sqs_client.get_queue_url.call_count >= 1
+            assert queue_url == "http://localhost:4566/000000000000/test-queue"
+            assert (
+                self.processor.queue_url
+                == "http://localhost:4566/000000000000/test-queue"
+            )
+
+            # Should be called multiple times: once for DLQ setup, once for main queue, etc.
+            assert mock_sqs.get_queue_url.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_get_queue_url_create_new_queue(self):
         """Test creating new queue when it doesn't exist"""
-        self.processor.sqs_client = Mock()
-        self.processor.sqs_client.get_queue_url.side_effect = Exception(
-            "Queue not found"
-        )
-        self.processor.sqs_client.create_queue.return_value = {
-            "QueueUrl": "http://localhost:4566/000000000000/new-queue"
-        }
-        self.processor.sqs_client.get_queue_attributes.return_value = {
-            "Attributes": {"QueueArn": "arn:aws:sqs:us-east-1:123456789012:new-queue"}
-        }
 
-        queue_url = await self.processor._get_queue_url()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.get_queue_url.side_effect = Exception("Queue not found")
+            mock_sqs.create_queue.return_value = {
+                "QueueUrl": "http://localhost:4566/000000000000/new-queue"
+            }
+            mock_sqs.get_queue_attributes.return_value = {
+                "Attributes": {
+                    "QueueArn": "arn:aws:sqs:us-east-1:123456789012:new-queue"
+                }
+            }
 
-        assert queue_url == "http://localhost:4566/000000000000/new-queue"
-        assert (
-            self.processor.queue_url == "http://localhost:4566/000000000000/new-queue"
-        )
+            queue_url = await self.processor._get_queue_url()
 
-        # Should create both DLQ and main queue
-        assert self.processor.sqs_client.create_queue.call_count >= 1
+            assert queue_url == "http://localhost:4566/000000000000/new-queue"
+            assert (
+                self.processor.queue_url
+                == "http://localhost:4566/000000000000/new-queue"
+            )
+
+            # Should create both DLQ and main queue
+            assert mock_sqs.create_queue.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_get_queue_url_caching(self):
         """Test that queue URL is cached after first call"""
-        self.processor.sqs_client = Mock()
-        self.processor.sqs_client.get_queue_url.return_value = {
-            "QueueUrl": "http://localhost:4566/000000000000/cached-queue"
-        }
-        self.processor.sqs_client.get_queue_attributes.return_value = {
-            "Attributes": {"RedrivePolicy": "existing"}
-        }
 
-        # First call
-        queue_url1 = await self.processor._get_queue_url()
-        # Second call
-        queue_url2 = await self.processor._get_queue_url()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.get_queue_url.return_value = {
+                "QueueUrl": "http://localhost:4566/000000000000/cached-queue"
+            }
+            mock_sqs.get_queue_attributes.return_value = {
+                "Attributes": {"RedrivePolicy": "existing"}
+            }
 
-        assert queue_url1 == queue_url2
-        # Queue URL should be cached, so no additional calls to get_queue_url for main queue
-        assert self.processor.queue_url is not None
+            # First call
+            queue_url1 = await self.processor._get_queue_url()
+            # Second call
+            queue_url2 = await self.processor._get_queue_url()
+
+            assert queue_url1 == queue_url2
+            # Queue URL should be cached, so no additional calls to get_queue_url for main queue
+            assert self.processor.queue_url is not None
 
     @patch("src.processor.main.redis_client")
     @patch("src.processor.main.asyncio.sleep")
@@ -177,56 +184,66 @@ class TestSQSProcessor:
         )
 
     @patch("src.processor.main.redis_client")
-    def test_process_messages_no_messages(self, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_no_messages(self, mock_redis_client):
         """Test processing when no messages are received"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
-        self.processor.sqs_client.receive_message.return_value = {}
 
-        result = self.processor.process_messages()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {}
 
-        assert result == 0
-        self.processor.sqs_client.receive_message.assert_called_once_with(
-            QueueUrl="test-queue-url",
-            MaxNumberOfMessages=10,  # from Config.MAX_MESSAGES_PER_BATCH
-            WaitTimeSeconds=20,  # from Config.SQS_WAIT_TIME_SECONDS
-            AttributeNames=["ApproximateReceiveCount"],  # Added for DLQ support
-            VisibilityTimeout=300,  # Added visibility timeout
-        )
+            result = await self.processor.process_messages()
+
+            assert result == 0
+            mock_sqs.receive_message.assert_called_once_with(
+                QueueUrl="test-queue-url",
+                MaxNumberOfMessages=10,  # from Config.MAX_MESSAGES_PER_BATCH
+                WaitTimeSeconds=20,  # from Config.SQS_WAIT_TIME_SECONDS
+                AttributeNames=["ApproximateReceiveCount"],  # Added for DLQ support
+                VisibilityTimeout=300,  # Added visibility timeout
+            )
 
     @patch("src.processor.main.redis_client")
-    def test_process_messages_valid_single_message(self, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_valid_single_message(self, mock_redis_client):
         """Test processing a single valid message"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         message_body = {"type": "user_signup", "value": 42}
-        self.processor.sqs_client.receive_message.return_value = {
-            "Messages": [
-                {
-                    "Body": json.dumps(message_body),
-                    "ReceiptHandle": "test-receipt-handle",
-                }
-            ]
-        }
 
-        result = self.processor.process_messages()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {
+                "Messages": [
+                    {
+                        "Body": json.dumps(message_body),
+                        "ReceiptHandle": "test-receipt-handle",
+                    }
+                ]
+            }
 
-        assert result == 1
+            result = await self.processor.process_messages()
 
-        # Verify Redis was updated
-        mock_redis_client.increment_event.assert_called_once_with("user_signup", 42.0)
+            assert result == 1
 
-        # Verify message was deleted
-        self.processor.sqs_client.delete_message.assert_called_once_with(
-            QueueUrl="test-queue-url", ReceiptHandle="test-receipt-handle"
-        )
+            # Verify Redis was updated
+            mock_redis_client.increment_event.assert_called_once_with(
+                "user_signup", 42.0
+            )
+
+            # Verify message was deleted
+            mock_sqs.delete_message.assert_called_once_with(
+                QueueUrl="test-queue-url", ReceiptHandle="test-receipt-handle"
+            )
 
     @patch("src.processor.main.redis_client")
-    def test_process_messages_multiple_valid_messages(self, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_multiple_valid_messages(self, mock_redis_client):
         """Test processing multiple valid messages"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         messages = [
             {
@@ -243,11 +260,14 @@ class TestSQSProcessor:
             },
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        result = self.processor.process_messages()
+            result = await self.processor.process_messages()
 
-        assert result == 3
+            assert result == 3
 
         # Verify Redis increments
         expected_calls = [
@@ -263,14 +283,14 @@ class TestSQSProcessor:
             call(QueueUrl="test-queue-url", ReceiptHandle="handle2"),
             call(QueueUrl="test-queue-url", ReceiptHandle="handle3"),
         ]
-        self.processor.sqs_client.delete_message.assert_has_calls(expected_delete_calls)
+        mock_sqs.delete_message.assert_has_calls(expected_delete_calls)
 
     @patch("src.processor.main.redis_client")
     @patch("src.processor.main.logger")
-    def test_process_messages_invalid_json(self, mock_logger, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_invalid_json(self, mock_logger, mock_redis_client):
         """Test processing messages with invalid JSON"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         messages = [
             {"Body": "invalid-json", "ReceiptHandle": "handle1"},
@@ -280,29 +300,36 @@ class TestSQSProcessor:
             },
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        result = self.processor.process_messages()
+            result = await self.processor.process_messages()
 
-        assert result == 1  # Only one valid message processed
+            assert result == 1  # Only one valid message processed
 
-        # Verify warning logged for invalid JSON
-        mock_logger.warning.assert_called()
-        warning_message = mock_logger.warning.call_args_list[0][0][0]
-        assert "invalid JSON" in warning_message
+            # Verify warning logged for invalid JSON
+            mock_logger.warning.assert_called()
+            warning_message = mock_logger.warning.call_args_list[0][0][0]
+            assert "invalid JSON" in warning_message
 
-        # Verify both messages were deleted
-        assert self.processor.sqs_client.delete_message.call_count == 2
+            # Verify both messages were deleted
+            assert mock_sqs.delete_message.call_count == 2
 
-        # Verify only valid message updated Redis
-        mock_redis_client.increment_event.assert_called_once_with("user_signup", 10.0)
+            # Verify only valid message updated Redis
+            mock_redis_client.increment_event.assert_called_once_with(
+                "user_signup", 10.0
+            )
 
     @patch("src.processor.main.redis_client")
     @patch("src.processor.main.logger")
-    def test_process_messages_invalid_schema(self, mock_logger, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_invalid_schema(
+        self, mock_logger, mock_redis_client
+    ):
         """Test processing messages with invalid schema"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         messages = [
             {
@@ -319,53 +346,60 @@ class TestSQSProcessor:
             },
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        result = self.processor.process_messages()
+            result = await self.processor.process_messages()
 
-        assert result == 1  # Only one valid message processed
+            assert result == 1  # Only one valid message processed
 
-        # Verify warnings logged for invalid schema
-        assert mock_logger.warning.call_count == 2
+            # Verify warnings logged for invalid schema
+            assert mock_logger.warning.call_count == 2
 
-        # Verify all messages were deleted
-        assert self.processor.sqs_client.delete_message.call_count == 3
+            # Verify all messages were deleted
+            assert mock_sqs.delete_message.call_count == 3
 
-        # Verify only valid message updated Redis
-        mock_redis_client.increment_event.assert_called_once_with("user_login", 5.0)
+            # Verify only valid message updated Redis
+            mock_redis_client.increment_event.assert_called_once_with("user_login", 5.0)
 
     @patch("src.processor.main.redis_client")
     @patch("src.processor.main.logger")
-    def test_process_messages_redis_error(self, mock_logger, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_redis_error(self, mock_logger, mock_redis_client):
         """Test handling Redis errors during message processing"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         message = {
             "Body": json.dumps({"type": "user_signup", "value": 42}),
             "ReceiptHandle": "test-handle",
         }
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": [message]}
         mock_redis_client.increment_event.side_effect = Exception("Redis error")
 
-        result = self.processor.process_messages()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": [message]}
 
-        assert result == 0  # No messages successfully processed
+            result = await self.processor.process_messages()
 
-        # Verify error was logged
-        mock_logger.error.assert_called()
-        error_message = mock_logger.error.call_args[0][0]
-        assert "Error processing message" in error_message
+            assert result == 0  # No messages successfully processed
 
-        # Message should NOT be deleted when processing fails
-        self.processor.sqs_client.delete_message.assert_not_called()
+            # Verify error was logged
+            mock_logger.error.assert_called()
+            error_message = mock_logger.error.call_args[0][0]
+            assert "Error processing message" in error_message
+
+            # Message should NOT be deleted when processing fails
+            mock_sqs.delete_message.assert_not_called()
 
     @patch("src.processor.main.redis_client")
-    def test_process_messages_shutdown_during_processing(self, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_process_messages_shutdown_during_processing(self, mock_redis_client):
         """Test that processing stops when shutdown is requested"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         messages = [
             {
@@ -378,19 +412,20 @@ class TestSQSProcessor:
             },
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
-
         # Set running to False after first message
         def stop_after_first_call(*args, **kwargs):
             self.processor.running = False
 
         mock_redis_client.increment_event.side_effect = stop_after_first_call
 
-        result = self.processor.process_messages()
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        # Should process only one message before stopping
-        assert result == 1
-        mock_redis_client.increment_event.assert_called_once()
+            result = await self.processor.process_messages()
+
+            assert result == 1  # Only first message processed before shutdown
 
     @pytest.mark.asyncio
     @patch("src.processor.main.redis_client")
@@ -555,10 +590,10 @@ class TestProcessorIntegration:
         self.processor = SQSProcessor()
 
     @patch("src.processor.main.redis_client")
-    def test_end_to_end_message_processing(self, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_end_to_end_message_processing(self, mock_redis_client):
         """Test end-to-end message processing workflow"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         # Mix of valid, invalid JSON, and invalid schema messages
         messages = [
@@ -578,29 +613,32 @@ class TestProcessorIntegration:
             },
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        result = self.processor.process_messages()
+            result = await self.processor.process_messages()
 
-        # Should successfully process 3 valid messages
-        assert result == 3
+            # Should successfully process 3 valid messages
+            assert result == 3
 
-        # Verify Redis was updated for each valid message
-        expected_calls = [
-            call("user_signup", 25.5),
-            call("user_login", 10.0),
-            call("page_view", 1.0),
-        ]
-        mock_redis_client.increment_event.assert_has_calls(expected_calls)
+            # Verify Redis was updated for each valid message
+            expected_calls = [
+                call("user_signup", 25.5),
+                call("user_login", 10.0),
+                call("page_view", 1.0),
+            ]
+            mock_redis_client.increment_event.assert_has_calls(expected_calls)
 
-        # Verify all messages were deleted (even invalid ones)
-        assert self.processor.sqs_client.delete_message.call_count == 5
+            # Verify all messages were deleted (even invalid ones)
+            assert mock_sqs.delete_message.call_count == 5
 
     @patch("src.processor.main.redis_client")
-    def test_large_batch_processing(self, mock_redis_client):
+    @pytest.mark.asyncio
+    async def test_large_batch_processing(self, mock_redis_client):
         """Test processing a large batch of messages"""
         self.processor.queue_url = "test-queue-url"
-        self.processor.sqs_client = Mock()
 
         # Generate 100 valid messages
         messages = []
@@ -612,13 +650,16 @@ class TestProcessorIntegration:
                 }
             )
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        result = self.processor.process_messages()
+            result = await self.processor.process_messages()
 
-        assert result == 100
-        assert mock_redis_client.increment_event.call_count == 100
-        assert self.processor.sqs_client.delete_message.call_count == 100
+            assert result == 100
+            assert mock_redis_client.increment_event.call_count == 100
+            assert mock_sqs.delete_message.call_count == 100
 
 
 class TestSQSProcessorDLQ:
@@ -634,20 +675,20 @@ class TestSQSProcessorDLQ:
         """Test creating new DLQ when it doesn't exist"""
         mock_config.DLQ_QUEUE_NAME = "test-dlq"
 
-        self.processor.sqs_client = Mock()
-        self.processor.sqs_client.get_queue_url.side_effect = Exception(
-            "Queue not found"
-        )
-        self.processor.sqs_client.create_queue.return_value = {
-            "QueueUrl": "http://localhost:4566/000000000000/test-dlq"
-        }
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.get_queue_url.side_effect = Exception("Queue not found")
+            mock_sqs.create_queue.return_value = {
+                "QueueUrl": "http://localhost:4566/000000000000/test-dlq"
+            }
 
-        await self.processor._setup_dlq()
+            await self.processor._setup_dlq()
 
-        assert self.processor.dlq_url == "http://localhost:4566/000000000000/test-dlq"
-        self.processor.sqs_client.create_queue.assert_called_once_with(
-            QueueName="test-dlq"
-        )
+            assert (
+                self.processor.dlq_url == "http://localhost:4566/000000000000/test-dlq"
+            )
+            mock_sqs.create_queue.assert_called_once_with(QueueName="test-dlq")
 
     @pytest.mark.asyncio
     @patch("src.processor.main.Config")
@@ -655,89 +696,105 @@ class TestSQSProcessorDLQ:
         """Test using existing DLQ"""
         mock_config.DLQ_QUEUE_NAME = "existing-dlq"
 
-        self.processor.sqs_client = Mock()
-        self.processor.sqs_client.get_queue_url.return_value = {
-            "QueueUrl": "http://localhost:4566/000000000000/existing-dlq"
-        }
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.get_queue_url.return_value = {
+                "QueueUrl": "http://localhost:4566/000000000000/existing-dlq"
+            }
 
-        await self.processor._setup_dlq()
+            await self.processor._setup_dlq()
 
-        assert (
-            self.processor.dlq_url == "http://localhost:4566/000000000000/existing-dlq"
-        )
-        self.processor.sqs_client.get_queue_url.assert_called_once_with(
-            QueueName="existing-dlq"
-        )
-        self.processor.sqs_client.create_queue.assert_not_called()
+            assert (
+                self.processor.dlq_url
+                == "http://localhost:4566/000000000000/existing-dlq"
+            )
+            mock_sqs.create_queue.assert_not_called()
 
     @patch("src.processor.main.Config")
-    def test_extend_message_visibility(self, mock_config):
+    @pytest.mark.asyncio
+    async def test_extend_message_visibility(self, mock_config):
         """Test extending message visibility timeout"""
         mock_config.SQS_VISIBILITY_TIMEOUT = 300
 
-        self.processor.sqs_client = Mock()
         self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
 
-        receipt_handle = "test-receipt-handle"
-        self.processor._extend_message_visibility(receipt_handle)
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
 
-        self.processor.sqs_client.change_message_visibility.assert_called_once_with(
-            QueueUrl="http://localhost:4566/000000000000/test-queue",
-            ReceiptHandle=receipt_handle,
-            VisibilityTimeout=300,
-        )
+            receipt_handle = "test-receipt-handle"
+            await self.processor._extend_message_visibility(receipt_handle)
+
+            mock_sqs.change_message_visibility.assert_called_once_with(
+                QueueUrl="http://localhost:4566/000000000000/test-queue",
+                ReceiptHandle=receipt_handle,
+                VisibilityTimeout=300,
+            )
 
     @patch("src.processor.main.Config")
-    def test_extend_message_visibility_custom_timeout(self, mock_config):
+    @pytest.mark.asyncio
+    async def test_extend_message_visibility_custom_timeout(self, mock_config):
         """Test extending message visibility with custom timeout"""
-        self.processor.sqs_client = Mock()
         self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
 
-        receipt_handle = "test-receipt-handle"
-        custom_timeout = 600
-        self.processor._extend_message_visibility(receipt_handle, custom_timeout)
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
 
-        self.processor.sqs_client.change_message_visibility.assert_called_once_with(
-            QueueUrl="http://localhost:4566/000000000000/test-queue",
-            ReceiptHandle=receipt_handle,
-            VisibilityTimeout=custom_timeout,
-        )
+            receipt_handle = "test-receipt-handle"
+            custom_timeout = 600
+            await self.processor._extend_message_visibility(
+                receipt_handle, custom_timeout
+            )
 
-    def test_get_dlq_message_count(self):
+            mock_sqs.change_message_visibility.assert_called_once_with(
+                QueueUrl="http://localhost:4566/000000000000/test-queue",
+                ReceiptHandle=receipt_handle,
+                VisibilityTimeout=custom_timeout,
+            )
+
+    @pytest.mark.asyncio
+    async def test_get_dlq_message_count(self):
         """Test getting DLQ message count"""
-        self.processor.sqs_client = Mock()
         self.processor.dlq_url = "http://localhost:4566/000000000000/test-dlq"
 
-        self.processor.sqs_client.get_queue_attributes.return_value = {
-            "Attributes": {"ApproximateNumberOfMessages": "5"}
-        }
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.get_queue_attributes.return_value = {
+                "Attributes": {"ApproximateNumberOfMessages": "5"}
+            }
 
-        count = self.processor.get_dlq_message_count()
+            count = await self.processor.get_dlq_message_count()
 
-        assert count == 5
-        self.processor.sqs_client.get_queue_attributes.assert_called_once_with(
-            QueueUrl="http://localhost:4566/000000000000/test-dlq",
-            AttributeNames=["ApproximateNumberOfMessages"],
-        )
+            assert count == 5
+            mock_sqs.get_queue_attributes.assert_called_once_with(
+                QueueUrl="http://localhost:4566/000000000000/test-dlq",
+                AttributeNames=["ApproximateNumberOfMessages"],
+            )
 
-    def test_get_dlq_message_count_no_dlq(self):
+    @pytest.mark.asyncio
+    async def test_get_dlq_message_count_no_dlq(self):
         """Test getting DLQ message count when no DLQ URL is set"""
         self.processor.dlq_url = None
 
-        count = self.processor.get_dlq_message_count()
+        count = await self.processor.get_dlq_message_count()
 
         assert count == 0
 
     @patch("src.processor.main.Config")
     @patch("src.processor.main.redis_client")
-    def test_process_messages_with_receive_count(self, mock_redis_client, mock_config):
+    @pytest.mark.asyncio
+    async def test_process_messages_with_receive_count(
+        self, mock_redis_client, mock_config
+    ):
         """Test processing messages with receive count tracking"""
         mock_config.MAX_MESSAGES_PER_BATCH = 10
         mock_config.SQS_WAIT_TIME_SECONDS = 20
         mock_config.SQS_VISIBILITY_TIMEOUT = 300
         mock_config.SQS_MAX_RECEIVE_COUNT = 3
 
-        self.processor.sqs_client = Mock()
         self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
 
         # Mock message with receive count
@@ -749,27 +806,33 @@ class TestSQSProcessorDLQ:
             }
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
+        with patch.object(self.processor.session, "client") as mock_session_client:
+            mock_sqs = AsyncMock()
+            mock_session_client.return_value.__aenter__.return_value = mock_sqs
+            mock_sqs.receive_message.return_value = {"Messages": messages}
 
-        result = self.processor.process_messages()
+            result = await self.processor.process_messages()
 
-        # Verify receive_message was called with correct parameters
-        self.processor.sqs_client.receive_message.assert_called_once_with(
-            QueueUrl="http://localhost:4566/000000000000/test-queue",
-            MaxNumberOfMessages=10,
-            WaitTimeSeconds=20,
-            AttributeNames=["ApproximateReceiveCount"],
-            VisibilityTimeout=300,
-        )
+            # Verify receive_message was called with correct parameters
+            mock_sqs.receive_message.assert_called_once_with(
+                QueueUrl="http://localhost:4566/000000000000/test-queue",
+                MaxNumberOfMessages=10,
+                WaitTimeSeconds=20,
+                AttributeNames=["ApproximateReceiveCount"],
+                VisibilityTimeout=300,
+            )
 
-        # Verify message was processed successfully
-        assert result == 1
-        mock_redis_client.increment_event.assert_called_once_with("test_event", 10.0)
-        self.processor.sqs_client.delete_message.assert_called_once()
+            # Verify message was processed successfully
+            assert result == 1
+            mock_redis_client.increment_event.assert_called_once_with(
+                "test_event", 10.0
+            )
+            mock_sqs.delete_message.assert_called_once()
 
     @patch("src.processor.main.Config")
     @patch("src.processor.main.redis_client")
-    def test_process_messages_high_receive_count_warning(
+    @pytest.mark.asyncio
+    async def test_process_messages_high_receive_count_warning(
         self, mock_redis_client, mock_config
     ):
         """Test that high receive count triggers warning log"""
@@ -778,7 +841,6 @@ class TestSQSProcessorDLQ:
         mock_config.SQS_VISIBILITY_TIMEOUT = 300
         mock_config.SQS_MAX_RECEIVE_COUNT = 3
 
-        self.processor.sqs_client = Mock()
         self.processor.queue_url = "http://localhost:4566/000000000000/test-queue"
 
         # Mock message with high receive count (approaching DLQ threshold)
@@ -792,20 +854,23 @@ class TestSQSProcessorDLQ:
             }
         ]
 
-        self.processor.sqs_client.receive_message.return_value = {"Messages": messages}
-
         # Mock Redis failure to trigger error handling
         mock_redis_client.increment_event.side_effect = Exception("Redis error")
 
         with patch("src.processor.main.logger") as mock_logger:
-            result = self.processor.process_messages()
+            with patch.object(self.processor.session, "client") as mock_session_client:
+                mock_sqs = AsyncMock()
+                mock_session_client.return_value.__aenter__.return_value = mock_sqs
+                mock_sqs.receive_message.return_value = {"Messages": messages}
 
-            # Verify warning was logged for high receive count
-            mock_logger.warning.assert_any_call("Message has been received 2 times")
+                result = await self.processor.process_messages()
 
-        # Verify message was not deleted due to processing error
-        assert result == 0
-        self.processor.sqs_client.delete_message.assert_not_called()
+                # Verify warning was logged for high receive count
+                mock_logger.warning.assert_any_call("Message has been received 2 times")
+
+            # Verify message was not deleted due to processing error
+            assert result == 0
+            mock_sqs.delete_message.assert_not_called()
 
 
 class TestConfigurationDLQ:
