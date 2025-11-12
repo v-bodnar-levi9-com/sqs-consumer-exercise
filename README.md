@@ -63,3 +63,22 @@ Using an AI assistant like Copilot, etc. is allowed, but these restrictions appl
 
 * You're transparent about which parts you used it for. For example: generating a unit test for a function, asking questions about best practices, etc.
 * Don't generate the whole assignment.
+
+
+### What AI and for what was used
+
+Beeing transparent (and even proud) about using AI assisted coding, I will list which tools was used during the exercise.
+
+First step was making production-esque setup. Idea was to conteinerize complete application and run everything with docker compose.
+AI here was used in agentic mode with clear task to create docker files for producer, localsatck  and consumer services.
+
+Than we switched to use poetry instead of pip with requirements, and AI was used to generate pyproject toml file
+
+Major milestone was decoupling of message processing and statistics services. Idea was that we would like to scale horisontally message processing.
+AI was used again here for new docker containers, and for API service it created api endpoints (end even simple html for dashboard which was later removed in order not to bloat the app).
+
+Last major use of AI was for redis client, as this part is prety much standart boilerplate code to wrap redis library.
+
+As for tests - they were completely generated, yet carefully revied.
+
+To sum up - AI agent (claude 4 sonet) enabled me to accomplish significantly more work in a short timeframe by automating configuration, container-related, and testing tasks.
