@@ -17,7 +17,9 @@ class TestRedisClient:
 
     @patch("src.shared.redis_client.redis.Redis")
     @patch("src.shared.redis_client.ConnectionPool")
-    def test_redis_client_initialization(self, mock_connection_pool_class, mock_redis_class):
+    def test_redis_client_initialization(
+        self, mock_connection_pool_class, mock_redis_class
+    ):
         """Test RedisClient initialization with connection pooling"""
         mock_connection_pool_instance = Mock()
         mock_connection_pool_class.return_value = mock_connection_pool_instance
@@ -42,7 +44,9 @@ class TestRedisClient:
         )
 
         # Verify Redis was initialized with the connection pool
-        mock_redis_class.assert_called_once_with(connection_pool=mock_connection_pool_instance)
+        mock_redis_class.assert_called_once_with(
+            connection_pool=mock_connection_pool_instance
+        )
 
         assert client.redis == mock_redis_instance
 

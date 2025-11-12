@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class RedisClient:
     """Redis client for managing event statistics"""
+
     _pool = None
 
     def __init__(self):
