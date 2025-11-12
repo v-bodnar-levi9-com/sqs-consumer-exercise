@@ -56,7 +56,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - SQS_QUEUE_NAME=hands-on-interview
       - REDIS_HOST=redis
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=WARNING
     depends_on:
       localstack:
         condition: service_healthy
@@ -76,7 +76,7 @@ services:
       - "8080:8000"
     environment:
       - REDIS_HOST=redis
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=WARNING
     depends_on:
       redis:
         condition: service_healthy

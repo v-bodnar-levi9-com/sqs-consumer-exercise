@@ -111,21 +111,23 @@ class TestSQSProcessor:
         self.processor.sqs_client.get_queue_url.assert_called_once()
 
     @patch("src.processor.main.redis_client")
-    @patch("src.processor.main.time.sleep")
-    def test_wait_for_redis_success(self, mock_sleep, mock_redis_client):
+    @patch("src.processor.main.asyncio.sleep")
+    @pytest.mark.asyncio
+    async def test_wait_for_redis_success(self, mock_sleep, mock_redis_client):
         """Test waiting for Redis when connection succeeds immediately"""
         mock_redis_client.ping.return_value = True
 
-        result = self.processor._wait_for_redis(max_retries=5)
+        result = await self.processor._wait_for_redis_connection(max_retries=5)
 
         assert result is True
         mock_redis_client.ping.assert_called_once()
         mock_sleep.assert_not_called()
 
     @patch("src.processor.main.redis_client")
-    @patch("src.processor.main.time.sleep")
+    @patch("src.processor.main.asyncio.sleep")
     @patch("src.processor.main.logger")
-    def test_wait_for_redis_retry_then_success(
+    @pytest.mark.asyncio
+    async def test_wait_for_redis_retry_then_success(
         self, mock_logger, mock_sleep, mock_redis_client
     ):
         """Test waiting for Redis with retries before success"""
@@ -136,7 +138,7 @@ class TestSQSProcessor:
             True,
         ]
 
-        result = self.processor._wait_for_redis(max_retries=5)
+        result = await self.processor._wait_for_redis_connection(max_retries=5)
 
         assert result is True
         assert mock_redis_client.ping.call_count == 3
@@ -147,15 +149,16 @@ class TestSQSProcessor:
         mock_logger.info.assert_called_once_with("Successfully connected to Redis")
 
     @patch("src.processor.main.redis_client")
-    @patch("src.processor.main.time.sleep")
+    @patch("src.processor.main.asyncio.sleep")
     @patch("src.processor.main.logger")
-    def test_wait_for_redis_max_retries_exceeded(
+    @pytest.mark.asyncio
+    async def test_wait_for_redis_max_retries_exceeded(
         self, mock_logger, mock_sleep, mock_redis_client
     ):
         """Test waiting for Redis when max retries are exceeded"""
         mock_redis_client.ping.side_effect = Exception("Connection failed")
 
-        result = self.processor._wait_for_redis(max_retries=3)
+        result = await self.processor._wait_for_redis_connection(max_retries=3)
 
         assert result is False
         assert mock_redis_client.ping.call_count == 3
@@ -388,7 +391,9 @@ class TestSQSProcessor:
     ):
         """Test run method when Redis connection fails"""
         # Mock Redis connection failure
-        with patch.object(self.processor, "_wait_for_redis", return_value=False):
+        with patch.object(
+            self.processor, "_wait_for_redis_connection", return_value=False
+        ):
             # Mock sys.exit to raise an exception instead of actually exiting
             mock_exit.side_effect = SystemExit(1)
 
@@ -400,12 +405,12 @@ class TestSQSProcessor:
 
     @pytest.mark.asyncio
     @patch("src.processor.main.redis_client")
-    @patch("src.processor.main.time.sleep")
+    @patch("src.processor.main.asyncio.sleep")
     async def test_run_successful_processing(self, mock_sleep, mock_redis_client):
         """Test run method with successful message processing"""
         # Mock successful setup
         with patch.object(
-            self.processor, "_wait_for_redis", return_value=True
+            self.processor, "_wait_for_redis_connection", return_value=True
         ), patch.object(
             self.processor, "_get_queue_url", return_value="test-queue"
         ), patch.object(
@@ -437,14 +442,14 @@ class TestSQSProcessor:
 
     @pytest.mark.asyncio
     @patch("src.processor.main.redis_client")
-    @patch("src.processor.main.time.sleep")
+    @patch("src.processor.main.asyncio.sleep")
     @patch("src.processor.main.logger")
     async def test_run_processing_loop_error_handling(
         self, mock_logger, mock_sleep, mock_redis_client
     ):
         """Test error handling in the main processing loop"""
         with patch.object(
-            self.processor, "_wait_for_redis", return_value=True
+            self.processor, "_wait_for_redis_connection", return_value=True
         ), patch.object(
             self.processor, "_get_queue_url", return_value="test-queue"
         ), patch.object(

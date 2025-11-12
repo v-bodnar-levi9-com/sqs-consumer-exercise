@@ -2,7 +2,18 @@
 import logging
 import time
 from typing import List, Dict
+
+#!/usr/bin/env python
+import asyncio
+import logging
+import time
+from typing import List, Dict
 from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+
+from ..shared.config import Config
+from ..shared.schemas import StatsResponse
+from .stats import stats_service
 from fastapi import FastAPI, HTTPException
 
 from ..shared.config import Config
@@ -23,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
+    """FastAPI lifespan context manager for startup/shutdown logic"""
     logger.info("Starting Stats API service")
 
-    # Wait for Redis to be available
+    # Wait for Redis to be available with exponential backoff
     max_retries = 30
     for attempt in range(max_retries):
         try:
@@ -38,7 +49,9 @@ async def lifespan(app: FastAPI):
             logger.warning(
                 f"Redis connection attempt {attempt + 1}/{max_retries} failed: {e}"
             )
-            time.sleep(1)
+            # Use exponential backoff instead of fixed sleep
+            wait_time = min(2**attempt * 0.1, 5)  # Max 5 seconds
+            await asyncio.sleep(wait_time)
     else:
         logger.error("Failed to connect to Redis after maximum retries")
         raise RuntimeError("Could not connect to Redis")

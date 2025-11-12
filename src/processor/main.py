@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import signal
@@ -56,8 +57,8 @@ class SQSProcessor:
                 logger.info(f"Successfully created queue with URL: {self.queue_url}")
         return self.queue_url
 
-    def _wait_for_redis(self, max_retries: int = 30):
-        """Wait for Redis to be available"""
+    async def _wait_for_redis_connection(self, max_retries=30):
+        """Wait for Redis connection with exponential backoff"""
         for attempt in range(max_retries):
             try:
                 if redis_client.ping():
@@ -67,7 +68,9 @@ class SQSProcessor:
                 logger.warning(
                     f"Redis connection attempt {attempt + 1}/{max_retries} failed: {e}"
                 )
-                time.sleep(1)
+                # Use exponential backoff instead of fixed sleep
+                wait_time = min(2**attempt * 0.1, 5)  # Max 5 seconds
+                await asyncio.sleep(wait_time)
 
         logger.error("Failed to connect to Redis after maximum retries")
         return False
@@ -162,7 +165,7 @@ class SQSProcessor:
         logger.info("Starting SQS Message Processor")
 
         # Wait for Redis to be available
-        if not self._wait_for_redis():
+        if not await self._wait_for_redis_connection():
             logger.error("Could not connect to Redis, exiting")
             sys.exit(1)
 
@@ -177,11 +180,11 @@ class SQSProcessor:
 
                 # Sleep only if no messages were processed
                 if processed_count == 0:
-                    time.sleep(Config.PROCESSOR_SLEEP_INTERVAL)
+                    await asyncio.sleep(Config.PROCESSOR_SLEEP_INTERVAL)
 
             except Exception as e:
                 logger.error(f"Error in main processing loop: {e}")
-                time.sleep(Config.PROCESSOR_SLEEP_INTERVAL)
+                await asyncio.sleep(Config.PROCESSOR_SLEEP_INTERVAL)
 
         logger.info("SQS Message Processor stopped")
 

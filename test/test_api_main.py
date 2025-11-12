@@ -276,7 +276,7 @@ class TestAPIMetadata:
 class TestAPILifespan:
     """Test cases for API lifespan management"""
 
-    @patch("src.api.main.time.sleep")
+    @patch("src.api.main.asyncio.sleep")
     @patch("src.api.main.stats_service")
     def test_lifespan_redis_connection_success(self, mock_stats_service, mock_sleep):
         """Test lifespan when Redis connection succeeds immediately"""
@@ -289,7 +289,7 @@ class TestAPILifespan:
         # We'll test the logic without actually starting the server
         assert lifespan is not None
 
-    @patch("src.api.main.time.sleep")
+    @patch("src.api.main.asyncio.sleep")
     @patch("src.api.main.stats_service")
     @patch("src.api.main.logger")
     def test_lifespan_redis_connection_retry(
